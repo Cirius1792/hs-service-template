@@ -1,0 +1,7 @@
+{
+  "service_name": "example",
+  "service_group": "Media",
+  "service_icon": "app",
+  "default_port": "8080",
+  "needs_auth": ["yes", "no"]
+}

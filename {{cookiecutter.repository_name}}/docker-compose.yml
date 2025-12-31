@@ -9,7 +9,7 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
     networks:
-      - proxy
+      - services_lan
     volumes:
       - /data/${SERVICE_NAME}:/config
     healthcheck:
@@ -23,6 +23,7 @@ services:
       - traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure
       - traefik.http.routers.${SERVICE_NAME}.tls=true
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencrypt
+
       - homepage.enable=true
       - homepage.name={{ cookiecutter.service_name | title }}
       - homepage.group={{ cookiecutter.service_group }}
@@ -30,5 +31,6 @@ services:
       - homepage.href=https://${SERVICE_NAME}.${BASE_DOMAIN:-{{ cookiecutter.base_domain }}}
 
 networks:
-  proxy:
+  services_lan:
+    name: service_internal_lan
     external: true

@@ -1,7 +1,7 @@
 # {{ cookiecutter.service_name | title }}
 
 ## Descrizione
-Servizio deployato automaticamente tramite Dokploy.
+Servizio deployato automaticamente tramite Portainer.
 
 ## Variabili obbligatorie
 | Variabile | Descrizione |

@@ -1,7 +1,8 @@
 {
   "service_name": "example",
+  "repository_name": "example-service",
   "service_group": "Media",
   "service_icon": "app",
-  "default_port": "8080",
-  "needs_auth": ["yes", "no"]
+  "base_domain": "example.com",
+  "default_port": "8080"
 }

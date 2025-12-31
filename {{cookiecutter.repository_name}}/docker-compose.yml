@@ -19,7 +19,7 @@ services:
       retries: 3
     labels:
       - traefik.enable=true
-      - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_NAME}.${BASE_DOMAIN}`)
+      - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_NAME}.${BASE_DOMAIN:-{{ cookiecutter.base_domain }}}`)
       - traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure
       - traefik.http.routers.${SERVICE_NAME}.tls=true
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencrypt
@@ -27,7 +27,7 @@ services:
       - homepage.name={{ cookiecutter.service_name | title }}
       - homepage.group={{ cookiecutter.service_group }}
       - homepage.icon={{ cookiecutter.service_icon }}
-      - homepage.href=https://${SERVICE_NAME}.${BASE_DOMAIN}
+      - homepage.href=https://${SERVICE_NAME}.${BASE_DOMAIN:-{{ cookiecutter.base_domain }}}
 
 networks:
   proxy:

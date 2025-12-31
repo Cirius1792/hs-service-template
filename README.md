@@ -43,12 +43,14 @@ cookiecutter https://github.com/<org>/clt-hs-compose-template.git
 
 Ti verranno richieste alcune informazioni di base:
 
+- nome del repository (nome cartella da creare)
 - nome del servizio (usato come subdomain)
+- dominio base
 - gruppo Homepage
 - icona Homepage
 - porta interna del servizio
 
-Al termine verrà generata una nuova directory contenente il repository del servizio.
+Al termine verrà generata una directory con il nome impostato in `repository_name`, contenente il repository del servizio.
 
 ---
 

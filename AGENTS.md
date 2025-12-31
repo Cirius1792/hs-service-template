@@ -6,20 +6,20 @@
 4. Repo type: Cookiecutter template used to scaffold homelab service repos.
 5. Primary stack: Docker Compose YAML, POSIX shell scripts, Markdown docs, .env files.
 6. Template variables: Jinja-style `{{ cookiecutter.* }}` placeholders must be preserved until Cookiecutter renders.
-7. Generated repo root lives under `{{cookiecutter.service_name}}/` here; adjust paths accordingly.
-8. Default service values come from `cookiecutter.json` (service_name, service_group, service_icon, default_port, needs_auth).
+7. Generated repo root lives under `{{cookiecutter.repository_name}}/` here; adjust paths accordingly (service definitions still use `{{cookiecutter.service_name}}`).
+8. Default service values come from `cookiecutter.json` (repository_name, service_name, service_group, service_icon, base_domain, default_port).
 9. Outputs of Cookiecutter are intended for Dokploy + Traefik + Homepage + Uptime Kuma workflows.
-10. All commands below assume execution from the generated service root (`{{cookiecutter.service_name}}/`).
+10. All commands below assume execution from the generated service root (`{{cookiecutter.repository_name}}/`).
 
 ## Directory map
-11. `{{cookiecutter.service_name}}/docker-compose.yml`: service definition with Traefik/Homepage labels.
-12. `{{cookiecutter.service_name}}/.env.example`: required environment variable template.
-13. `{{cookiecutter.service_name}}/ci/check.sh`: local/CI validation script.
-14. `{{cookiecutter.service_name}}/ci/release.sh`: semantic-release wrapper.
-15. `{{cookiecutter.service_name}}/ci/semantic-release.config.js`: release config.
-16. `{{cookiecutter.service_name}}/.gitleaks.toml`: allowlist for secrets scanning.
+11. `{{cookiecutter.repository_name}}/docker-compose.yml`: service definition with Traefik/Homepage labels.
+12. `{{cookiecutter.repository_name}}/.env.example`: required environment variable template.
+13. `{{cookiecutter.repository_name}}/ci/check.sh`: local/CI validation script.
+14. `{{cookiecutter.repository_name}}/ci/release.sh`: semantic-release wrapper.
+15. `{{cookiecutter.repository_name}}/ci/semantic-release.config.js`: release config.
+16. `{{cookiecutter.repository_name}}/.gitleaks.toml`: allowlist for secrets scanning.
 17. `README.md` (root): explains template usage and prerequisites.
-18. `{{cookiecutter.service_name}}/README.md`: per-service variables and healthcheck summary.
+18. `{{cookiecutter.repository_name}}/README.md`: per-service variables and healthcheck summary.
 19. No tests, build outputs, or compiled artifacts exist in the template.
 20. No language-specific package manager files are present.
 
@@ -32,13 +32,13 @@
 26. Keep environment locale UTF-8; scripts assume standard GNU utilities.
 
 ## Core commands
-27. Validate repository locally: `cd {{cookiecutter.service_name}} && ./ci/check.sh`.
+27. Validate repository locally: `cd {{cookiecutter.repository_name}} && ./ci/check.sh`.
 28. What check does: confirms required files, required vars in `.env.example`, runs `gitleaks detect --source . --no-git`.
 29. If gitleaks missing, script fails with message; install before rerun.
-30. Release automation: `cd {{cookiecutter.service_name}} && ./ci/release.sh` (semantic-release).
+30. Release automation: `cd {{cookiecutter.repository_name}} && ./ci/release.sh` (semantic-release).
 31. Semantic-release config uses branch `main` and plugins commit-analyzer, release-notes-generator, changelog, git.
 32. Generate service repo from template: `cookiecutter https://github.com/<org>/clt-hs-compose-template.git` (replace org appropriately).
-33. Bring up service locally after configuring `.env`: `cd {{cookiecutter.service_name}} && docker compose up -d`.
+33. Bring up service locally after configuring `.env`: `cd {{cookiecutter.repository_name}} && docker compose up -d`.
 34. Tear down local service: `docker compose down` from same directory.
 35. Inspect service logs: `docker compose logs -f {{cookiecutter.service_name}}`.
 36. Single check analogue: there are no unit tests; targeted validation is `gitleaks detect --source . --no-git --report-path report.json` if needed.
@@ -49,7 +49,7 @@
 41. Conventional commits enforced socially; use `feat|fix|chore|docs|refactor|perf|test` scopes as needed.
 42. No lint/format commands are provided; keep files clean and POSIX-compliant.
 43. To dry-run semantic-release (if installed): `semantic-release --dry-run`.
-44. For new services requiring auth, respect `needs_auth` choice when templating docs/labels (manual, no script).
+44. If a service requires auth, document and configure it manually (no template flag).
 
 ## Cookiecutter templating rules
 45. Do not resolve or hardcode `{{ cookiecutter.* }}` placeholders inside the template files.
@@ -58,7 +58,7 @@
 48. Avoid inserting YAML anchors that might conflict with Jinja braces.
 49. Keep template default values generic; no secrets or org-specific data.
 50. Keep filenames stable; Cookiecutter expects given paths.
-51. Template supports `needs_auth` options `yes|no`; mirror that in docs if extended.
+51. The template does not include an auth toggle; add custom docs/labels if you extend it.
 52. Do not introduce language runtimes not present in the template without updating docs/commands.
 
 ## Code style: shell (sh)

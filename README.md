@@ -1,145 +1,95 @@
 # Homelab Service Template
 
-Questo repository fornisce un **template standard** per creare nuovi repository di servizi da rilasciare nel homelab tramite:
-
-- Docker Compose
-- Dokploy (deploy automatico)
-- Traefik (reverse proxy)
-- Homepage (dashboard)
-- Uptime Kuma (monitoring)
-
-Il template è progettato per essere **usato tramite Cookiecutter** e per supportare:
-- configurazione come codice
-- deploy automatico da Git
-- validazione CI portabile
-- release notes automatiche
+This repository is a Cookiecutter template that bootstraps homelab services with Docker Compose, Traefik, Homepage, and optional SWAG reverse-proxy automation. The generated project contains everything needed to deploy from Git, validate with CI, and document required variables.
 
 ---
 
-## Prerequisiti
+## Prerequisites
 
-Sul sistema da cui inizializzi un nuovo servizio devono essere disponibili:
+Install the following where you run Cookiecutter:
 
 - `git`
 - `cookiecutter`
-- `docker` (per sviluppo/test locale, opzionale)
+- `docker` (optional, for local runs)
+- `sh`, `gitleaks`, `node` + `semantic-release` if you plan to execute the CI scripts locally
 
-Per la CI:
-- `sh`
-- `gitleaks`
-- `node` + `semantic-release`
+On the remote host, ensure Docker Compose v2 and the external `proxy` network exist.
 
 ---
 
-## Creazione di un nuovo servizio
-
-### 1. Generazione repository
-
-Usa Cookiecutter puntando a questo repository:
+## Generate a service repository
 
 ```bash
 cookiecutter https://github.com/<org>/clt-hs-compose-template.git
 ```
 
-Ti verranno richieste alcune informazioni di base:
+You will be prompted for:
 
-- nome del repository (nome cartella da creare)
-- nome del servizio (usato come subdomain)
-- dominio base
-- gruppo Homepage
-- icona Homepage
-- porta interna del servizio
+| Prompt | Description |
+|--------|-------------|
+| `repository_name` | Folder/repo name that will be created |
+| `service_name` | Used for the container name, Traefik router, and SWAG config |
+| `service_group` | Homepage group label |
+| `service_icon` | Homepage icon |
+| `base_domain` | Domain served by Traefik/SWAG |
+| `default_port` | Internal port exposed by the service |
+| `include_proxy_config` | `y`/`n` to decide whether to scaffold a SWAG config and deploy workflow |
 
-Al termine verrà generata una directory con il nome impostato in `repository_name`, contenente il repository del servizio.
+After generation you get a ready-to-commit repository under `{{cookiecutter.repository_name}}/`.
 
----
-
-### 2. Configurazione del servizio
-
-Nel repository generato:
-
-1. Compila il file `.env` a partire da `.env.example`
-2. Aggiorna l'immagine Docker in `docker-compose.yml`
-3. Verifica le label Traefik e Homepage (già preconfigurate)
-
-Tutte le variabili obbligatorie sono documentate nel README del servizio.
+### Proxy toggle
+- When `include_proxy_config = y` (default) the project includes `swag/proxy-confs/{{ cookiecutter.service_name }}.subdomain.conf`, the deploy workflow, and the bash script that uploads the config.
+- When set to `n`, the post-generation hook removes `swag/`; the workflow and script handle the absence of proxy files by exiting cleanly until you add one.
 
 ---
 
-### 3. Validazione locale (opzionale)
+## Template contents
 
-Puoi validare la correttezza del repository prima del push:
-
-```bash
-./ci/check.sh
-```
-
-Questo script verifica:
-- struttura del repository
-- completezza delle variabili
-- assenza di secret in chiaro (via Gitleaks)
+- `docker-compose.yml` – service definition with Traefik and Homepage labels.
+- `.env.example` – required runtime variables (`SERVICE_NAME`, `BASE_DOMAIN`, `TZ`, `PUID`, `PGID`).
+- `scripts/deploy_swag_config.sh` – uploads a single `*.subdomain.conf` or `*.subfolder.conf` file, preserving its filename on the remote SWAG host.
+- `.github/workflows/deploy-swag-config.yml` – runs on pushes to proxy files or manual dispatch and invokes the deploy script.
+- `ci/check.sh` – validates structure, env vars, and runs Gitleaks.
+- `ci/release.sh` – semantic-release wrapper.
 
 ---
 
-### 4. Commit e release
+## Local validation & release
 
-I repository generati utilizzano **Conventional Commits**.
-
-Esempi:
-
-```text
-feat: add initial service definition
-fix: correct traefik router rule
-```
-
-La release viene generata automaticamente tramite:
-
-```bash
-./ci/release.sh
-```
-
-La release:
-- calcola la nuova versione
-- aggiorna `CHANGELOG.md`
-- crea un tag Git
+1. Copy `.env.example` to `.env` and fill the values.
+2. Run `docker compose up -d` (optional) to test locally.
+3. Execute `./ci/check.sh` before committing to ensure required files and secrets scanning pass.
+4. Use Conventional Commits (`feat: ...`, `fix: ...`).
+5. Publish releases with `./ci/release.sh` when ready.
 
 ---
 
-### 5. Deploy
+## Reverse proxy workflow setup
 
-Una volta pushato il repository:
+If proxy automation is enabled, configure the following in the generated repository before triggering the workflow:
 
-- Dokploy rileva le modifiche
-- esegue `docker compose up -d`
-- Traefik espone il servizio
-- Homepage aggiorna la dashboard
+| Name | Type | Purpose |
+|------|------|---------|
+| `DEPLOY_SSH_KEY` | secret | Private key for SSH access to the SWAG host |
+| `DEPLOY_SSH_HOST` | secret | Hostname/IP of the SWAG machine |
+| `DEPLOY_SSH_USER` | secret | SSH user with permissions to manage SWAG |
+| `DEPLOY_SSH_PORT` | secret (optional) | Non-default SSH port |
+| `SWAG_CONTAINER_NAME` | secret (optional) | Docker container name if different from `swag` |
+| `SWAG_REMOTE_CONFIG_PATH` | repository variable preferred (secret fallback) | Directory or absolute file path where proxy configs live on the remote host |
+| `DEPLOY_KNOWN_HOSTS` | secret (optional but recommended) | `known_hosts` entry so SSH host-key verification succeeds |
 
----
-
-## Filosofia del template
-
-- Git è l'unica fonte di verità
-- Nessuna configurazione manuale post-deploy
-- CI portabile, senza logica vendor-specific
-- Nessun valore hardcoded
-- Osservabilità separata dal deploy
-
----
-
-## Documentazione
-
-- `REQUIREMENTS.md` – requisiti e convenzioni
-- `ci/check.sh` – validazione repository
-- `ci/release.sh` – processo di release
+Workflow behavior:
+- Triggered by pushes affecting `swag/proxy-confs/**`, the deploy script, or the workflow itself, and via `workflow_dispatch`.
+- Optional `config_path` input lets you force a specific file. When omitted, the script scans `swag/proxy-confs/` and requires exactly one `*.subdomain.conf` or `*.subfolder.conf` file. If the directory is absent or empty the job exits successfully without deploying.
+- On deploy, the script copies the config to a temporary location, installs it at `SWAG_REMOTE_CONFIG_PATH`, validates `nginx -t` inside the SWAG container, and reloads nginx.
 
 ---
 
-## Obiettivo
+## Philosophy
 
-> Creare un nuovo servizio deve richiedere solo:
-> 1. generare un repository
-> 2. configurare il servizio
-> 3. fare push
+- Git is the source of truth; no manual changes on servers.
+- All configuration is expressed as code and validated with portable tooling.
+- Reverse proxy automation is opt-in and safe by default.
+- No secrets committed—environment variables live in `.env` or CI secrets.
 
-Tutto il resto avviene automaticamente.
-# hs-service-template
+With these conventions, rolling out a new homelab service is as simple as generating the repo, configuring the stack, and pushing to main. All supporting automation (validation, deployment, releases) is ready out of the box.

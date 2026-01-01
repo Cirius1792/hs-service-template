@@ -1,0 +1,52 @@
+name: Deploy SWAG config
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'swag/proxy-confs/**'
+      - 'scripts/deploy_swag_config.sh'
+      - '.github/workflows/deploy-swag-config.yml'
+  workflow_dispatch:
+    inputs:
+      config_path:
+        description: Relative path to the config file to deploy (leave empty for auto-detect)
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CONFIG_FILE: ${{ github.event.inputs.config_path || '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure known_hosts
+        if: secrets.DEPLOY_KNOWN_HOSTS != ''
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Start ssh-agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Deploy SWAG config
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          SWAG_REMOTE_CONFIG_PATH: ${{ vars.SWAG_REMOTE_CONFIG_PATH || secrets.SWAG_REMOTE_CONFIG_PATH }}
+          SWAG_CONTAINER_NAME: ${{ secrets.SWAG_CONTAINER_NAME }}
+          CONFIG_FILE: ${{ env.CONFIG_FILE }}
+        run: |
+          if [ -n "${CONFIG_FILE:-}" ]; then
+            scripts/deploy_swag_config.sh "$CONFIG_FILE"
+          else
+            scripts/deploy_swag_config.sh
+          fi

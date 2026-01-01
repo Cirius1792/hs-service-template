@@ -4,5 +4,6 @@
   "service_group": "Media",
   "service_icon": "app",
   "base_domain": "example.com",
-  "default_port": "8080"
+  "default_port": "8080",
+  "include_proxy_config": "y"
 }

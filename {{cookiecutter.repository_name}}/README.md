@@ -1,22 +1,64 @@
 # {{ cookiecutter.service_name | title }}
 
-## Descrizione
-Servizio deployato automaticamente tramite Portainer.
+## Overview
+Infrastructure-as-code template for deploying the {{ cookiecutter.service_name | title }} service in a homelab environment via Docker Compose and optional SWAG reverse proxy automation.
 
-## Variabili obbligatorie
-| Variabile | Descrizione |
-|---------|-------------|
-| SERVICE_NAME | Subdomain del servizio |
-| BASE_DOMAIN | Dominio base |
-| TZ | Timezone |
-| PUID | User ID |
-| PGID | Group ID |
+## Required environment variables
+| Variable | Description |
+|----------|-------------|
+| SERVICE_NAME | Subdomain (and container name) for the service |
+| BASE_DOMAIN | Base domain served by Traefik/SWAG |
+| TZ | Container timezone |
+| PUID | User ID that owns mounted data |
+| PGID | Group ID that owns mounted data |
 
-## URL pubblico
-https://${SERVICE_NAME}.${BASE_DOMAIN}
+## Public URL
+`https://${SERVICE_NAME}.${BASE_DOMAIN}`
 
 ## Healthcheck
-Endpoint HTTP su porta {{ cookiecutter.default_port }}.
+HTTP endpoint exposed on port {{ cookiecutter.default_port }}.
+
+## Local deployment
+1. Copy `.env.example` to `.env` and fill the variables above.
+2. Ensure the external Docker network referenced in `docker-compose.yml` exists (e.g. `docker network create proxy`).
+3. Run `docker compose up -d` from the repository root to start the service.
 
 ## Monitoring
-Il servizio può essere monitorato tramite Uptime Kuma usando l'URL pubblico.
+The service can be monitored from Uptime Kuma using the public URL shown above.
+
+## Reverse proxy deployment workflow
+The repository ships with a GitHub/Gitea Action (`.github/workflows/deploy-swag-config.yml`) that uploads SWAG nginx configs via `scripts/deploy_swag_config.sh` whenever a proxy file changes or on manual dispatch. The script preserves the original filename, validates nginx inside the `swag` container, and reloads the proxy only after a successful `nginx -t`.
+
+### Required secrets and variables
+Configure these items in the generated repository before running the workflow:
+- `DEPLOY_SSH_KEY` (secret): Private key used to connect to the remote SWAG host.
+- `DEPLOY_SSH_HOST` (secret): Hostname or IP address of the target server.
+- `DEPLOY_SSH_USER` (secret): SSH user allowed to manage SWAG.
+- `DEPLOY_SSH_PORT` (secret, optional): Non-default SSH port.
+- `SWAG_CONTAINER_NAME` (secret, optional): Docker container name if it is not `swag`.
+- `SWAG_REMOTE_CONFIG_PATH` (repository variable preferred, secret fallback): Absolute directory (or file path) on the remote host where proxy configs live.
+- `DEPLOY_KNOWN_HOSTS` (secret, optional but recommended): Contents of the server’s `known_hosts` entry to avoid host-key prompts.
+
+The workflow accepts an optional `config_path` input on `workflow_dispatch`. When the input is blank, the deploy script scans `swag/proxy-confs/` for exactly one file that matches `*.subdomain.conf` or `*.subfolder.conf`, fails if more than one is found, and does nothing if none exist.
+
+{% if cookiecutter.include_proxy_config|lower == 'y' %}
+### Included proxy file
+- Location: `swag/proxy-confs/{{ cookiecutter.service_name }}.subdomain.conf`
+- Upstream container: `{{ cookiecutter.service_name }}` listening on port `{{ cookiecutter.default_port }}`.
+Keep only one proxy file in this directory; the automation deploys whichever file is present and keeps its original name on the remote SWAG host.
+{% else %}
+### Adding a proxy later
+This project was generated without a SWAG configuration file. To enable the workflow:
+1. Create `swag/proxy-confs/` and add exactly one file named `*.subdomain.conf` or `*.subfolder.conf`.
+2. Re-run the workflow (or push the file) so the deploy script can detect and upload it.
+{% endif %}
+
+### Manual execution
+Run the script locally if needed:
+```sh
+SWAG_REMOTE_CONFIG_PATH=/remote/path scripts/deploy_swag_config.sh
+```
+Pass an explicit file and remote target path to override auto-detection:
+```sh
+scripts/deploy_swag_config.sh swag/proxy-confs/<file>.conf /remote/path/
+```

@@ -43,17 +43,19 @@ else
   fi
   shopt -s nullglob
   CANDIDATES=()
+  file_count=0
   for candidate in "$SEARCH_DIR"/*.subdomain.conf "$SEARCH_DIR"/*.subfolder.conf; do
     if [[ -f "$candidate" ]]; then
       CANDIDATES+=("$candidate")
+      file_count=$((file_count + 1))
     fi
   done
   shopt -u nullglob
-  if [[ ${#CANDIDATES[@]} -eq 0 ]]; then
+  if [ "$file_count" -eq 0 ]; then
     echo "No *.subdomain.conf or *.subfolder.conf files found in '$SEARCH_DIR'; nothing to deploy."
     exit 0
   fi
-  if [[ ${#CANDIDATES[@]} -gt 1 ]]; then
+  if [ "$file_count" -gt 1 ]; then
     echo "Multiple config files found in '$SEARCH_DIR'; ensure only one exists:" >&2
     for file in "${CANDIDATES[@]}"; do
       echo "  - $file" >&2

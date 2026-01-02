@@ -19,7 +19,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      CONFIG_FILE: ${{ github.event.inputs.config_path || '' }}
+      CONFIG_FILE_INPUT: {{ '${{ github.event.inputs.config_path }}' }}
+      SWAG_REMOTE_CONFIG_PATH_VAR: {{ '${{ vars.SWAG_REMOTE_CONFIG_PATH }}' }}
+      SWAG_REMOTE_CONFIG_PATH_SECRET: {{ '${{ secrets.SWAG_REMOTE_CONFIG_PATH }}' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,25 +30,34 @@ jobs:
         if: secrets.DEPLOY_KNOWN_HOSTS != ''
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "{{ '${{ secrets.DEPLOY_KNOWN_HOSTS }}' }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Start ssh-agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          ssh-private-key: {{ '${{ secrets.DEPLOY_SSH_KEY }}' }}
 
       - name: Deploy SWAG config
         env:
-          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
-          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
-          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
-          SWAG_REMOTE_CONFIG_PATH: ${{ vars.SWAG_REMOTE_CONFIG_PATH || secrets.SWAG_REMOTE_CONFIG_PATH }}
-          SWAG_CONTAINER_NAME: ${{ secrets.SWAG_CONTAINER_NAME }}
-          CONFIG_FILE: ${{ env.CONFIG_FILE }}
+          DEPLOY_SSH_HOST: {{ '${{ secrets.DEPLOY_SSH_HOST }}' }}
+          DEPLOY_SSH_USER: {{ '${{ secrets.DEPLOY_SSH_USER }}' }}
+          DEPLOY_SSH_PORT: {{ '${{ secrets.DEPLOY_SSH_PORT }}' }}
+          SWAG_CONTAINER_NAME: {{ '${{ secrets.SWAG_CONTAINER_NAME }}' }}
+          CONFIG_FILE_INPUT: {{ '${{ env.CONFIG_FILE_INPUT }}' }}
+          SWAG_REMOTE_CONFIG_PATH_VAR: {{ '${{ env.SWAG_REMOTE_CONFIG_PATH_VAR }}' }}
+          SWAG_REMOTE_CONFIG_PATH_SECRET: {{ '${{ env.SWAG_REMOTE_CONFIG_PATH_SECRET }}' }}
         run: |
-          if [ -n "${CONFIG_FILE:-}" ]; then
+          if [ -n "${SWAG_REMOTE_CONFIG_PATH_VAR:-}" ]; then
+            export SWAG_REMOTE_CONFIG_PATH="$SWAG_REMOTE_CONFIG_PATH_VAR"
+          else
+            export SWAG_REMOTE_CONFIG_PATH="${SWAG_REMOTE_CONFIG_PATH_SECRET:-}"
+          fi
+
+          CONFIG_FILE="${CONFIG_FILE_INPUT:-}"
+          if [ -n "$CONFIG_FILE" ]; then
             scripts/deploy_swag_config.sh "$CONFIG_FILE"
           else
             scripts/deploy_swag_config.sh
           fi
+

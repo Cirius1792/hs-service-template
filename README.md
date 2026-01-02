@@ -13,7 +13,7 @@ Install the following where you run Cookiecutter:
 - `docker` (optional, for local runs)
 - `sh`, `gitleaks`, `node` + `semantic-release` if you plan to execute the CI scripts locally
 
-On the remote host, ensure Docker Compose v2 and the external `proxy` network exist.
+On the remote host, ensure Docker Compose v2 and the external `servie_lan` network exist.
 
 ---
 
@@ -49,18 +49,7 @@ After generation you get a ready-to-commit repository under `{{cookiecutter.repo
 - `.env.example` – required runtime variables (`SERVICE_NAME`, `BASE_DOMAIN`, `TZ`, `PUID`, `PGID`).
 - `scripts/deploy_swag_config.sh` – uploads a single `*.subdomain.conf` or `*.subfolder.conf` file, preserving its filename on the remote SWAG host.
 - `.github/workflows/deploy-swag-config.yml` – runs on pushes to proxy files or manual dispatch and invokes the deploy script.
-- `ci/check.sh` – validates structure, env vars, and runs Gitleaks.
-- `ci/release.sh` – semantic-release wrapper.
-
----
-
-## Local validation & release
-
-1. Copy `.env.example` to `.env` and fill the values.
-2. Run `docker compose up -d` (optional) to test locally.
-3. Execute `./ci/check.sh` before committing to ensure required files and secrets scanning pass.
-4. Use Conventional Commits (`feat: ...`, `fix: ...`).
-5. Publish releases with `./ci/release.sh` when ready.
+- `scripts` – sh scripts used by ci processes.
 
 ---
 
@@ -78,11 +67,19 @@ If proxy automation is enabled, configure the following in the generated reposit
 | `SWAG_REMOTE_CONFIG_PATH` | repository variable preferred (secret fallback) | Directory or absolute file path where proxy configs live on the remote host |
 | `DEPLOY_KNOWN_HOSTS` | secret (optional but recommended) | `known_hosts` entry so SSH host-key verification succeeds |
 
+
 Workflow behavior:
 - Triggered by pushes affecting `swag/proxy-confs/**`, the deploy script, or the workflow itself, and via `workflow_dispatch`.
 - Optional `config_path` input lets you force a specific file. When omitted, the script scans `swag/proxy-confs/` and requires exactly one `*.subdomain.conf` or `*.subfolder.conf` file. If the directory is absent or empty the job exits successfully without deploying.
 - On deploy, the script copies the config to a temporary location, installs it at `SWAG_REMOTE_CONFIG_PATH`, validates `nginx -t` inside the SWAG container, and reloads nginx.
 
+### How to populate DEPLOY_KNOWN_HOSTS
+
+Use the command below from a machine that already is able to connect to the remote host and use the output of this command as it is to populate the DEPLOY_KNOWN_HOSTS secret. 
+
+```bash
+ssh-keyscan hostname -p port 
+```
 ---
 
 ## Philosophy

@@ -15,8 +15,23 @@ env:
   ENV_FILE: stack.env
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Validate Compose file
+        run: |
+          docker compose --env-file $ENV_FILE config --quiet
+        env:
+          COMPOSE_FILE: docker-compose.yml  
+
   deploy:
     runs-on: ubuntu-latest
+    depends_on: validate
 
     steps:
       - name: Checkout repository

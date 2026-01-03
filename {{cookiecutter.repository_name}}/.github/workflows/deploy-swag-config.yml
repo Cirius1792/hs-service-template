@@ -9,12 +9,6 @@ on:
       - 'scripts/deploy_swag_config.sh'
       - '.github/workflows/deploy-swag-config.yml'
 
-  workflow_run:
-    workflows:
-      - Deploy stack to Portainer
-    types:
-      - completed
-
   workflow_dispatch:
     inputs:
       config_path:

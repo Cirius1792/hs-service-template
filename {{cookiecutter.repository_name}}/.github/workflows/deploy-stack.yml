@@ -1,0 +1,251 @@
+name: Deploy stack to Portainer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docker-compose.yml'
+      - 'stack.env'
+      - '.github/workflows/deploy-stack.yml'
+
+env:
+  COMPOSE_FILE_PATH: docker-compose.yml
+  REPO_REF: refs/heads/main
+  ENV_FILE: stack.env
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install jq and uuidgen
+        run: sudo apt-get update && sudo apt-get install -y jq uuid-runtime
+
+      - name: Resolve stack name
+        id: name
+        run: |
+          set -e
+
+          REPO="${GITHUB_REPOSITORY:-$GITEA_REPOSITORY}"
+          STACK_NAME="${REPO##*/}"
+
+          echo "Stack name resolved to: $STACK_NAME"
+          echo "stack_name=$STACK_NAME" >> $GITHUB_OUTPUT
+
+      - name: Resolve stack ID (create if missing)
+        id: stack
+        env:
+          PORTAINER_URL: {{ '${{ vars.PORTAINER_URL }}' }}
+          PORTAINER_API_KEY: {{ '${{ secrets.PORTAINER_ACCESS_TOKEN }}' }}
+          PORTAINER_ENDPOINT_ID: {{ '${{ vars.PORTAINER_ENVIRONMENT_ID }}' }}
+          GIT_USERNAME: {{ '${{ secrets.GIT_USERNAME }}' }}
+          GIT_TOKEN: {{ '${{ secrets.GIT_TOKEN }}' }}
+          GIT_REPO_URL: {{ '${{ github.server_url }}/${{ github.repository }}' }}
+        run: |
+          set -eo pipefail
+
+          require_env() {
+            local name="$1"
+            if [ -z "${!name:-}" ]; then
+              echo "ERROR: Required environment variable '$name' is not set"
+              exit 2
+            fi
+          }
+
+          for var in PORTAINER_URL PORTAINER_API_KEY PORTAINER_ENDPOINT_ID GIT_USERNAME GIT_TOKEN COMPOSE_FILE_PATH REPO_REF; do
+            require_env "$var"
+          done
+
+          STACK_NAME={{ '"${{ steps.name.outputs.stack_name }}"' }}
+
+          if [ -f "$ENV_FILE" ]; then
+            ENV_JSON=$(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | \
+              jq -R -s -c '
+                split("\n") |
+                map(select(length > 0)) |
+                map(split("=") | {name: .[0], value: .[1]})
+              ')
+          else
+            ENV_JSON='[]'
+          fi
+
+          if [ -z "$STACK_NAME" ]; then
+            echo "ERROR: Stack name output is empty"
+            exit 2
+          fi
+
+          echo "Resolving stack '$STACK_NAME' on endpoint $PORTAINER_ENDPOINT_ID"
+
+          STACKS_RESPONSE=$(curl -sS -w "\n%{http_code}" \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks")
+
+          STACKS_HTTP_STATUS=$(printf '%s\n' "$STACKS_RESPONSE" | tail -n1)
+          STACKS_BODY=$(printf '%s\n' "$STACKS_RESPONSE" | sed '$d')
+
+          echo "GET /api/stacks status: $STACKS_HTTP_STATUS"
+
+          if [ "${STACKS_HTTP_STATUS:-0}" -ge 400 ]; then
+            echo "Portainer returned an error while listing stacks:"
+            printf '%s\n' "$STACKS_BODY"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "$STACKS_BODY" | jq -e . >/dev/null 2>&1; then
+            echo "Response from Portainer is not valid JSON:"
+            printf '%s\n' "$STACKS_BODY"
+            exit 1
+          fi
+
+          STACK_ID=$(printf '%s\n' "$STACKS_BODY" | \
+            jq -r ".[] | select(.Name == \"$STACK_NAME\") | .Id")
+
+          if [ -z "$STACK_ID" ] || [ "$STACK_ID" = "null" ]; then
+            UUID=$(uuidgen)
+            echo "Stack not found. Creating with Webhook $UUID..."
+            PAYLOAD=$(jq -n \
+              --arg name "$STACK_NAME" \
+              --arg repo "$GIT_REPO_URL" \
+              --arg ref "$REPO_REF" \
+              --arg compose "$COMPOSE_FILE_PATH" \
+              --arg user "$GIT_USERNAME" \
+              --arg pass "$GIT_TOKEN" \
+              --arg uuid "$UUID" \
+              --argjson env "$ENV_JSON" \
+              '{
+                name: $name,
+                repositoryURL: $repo,
+                repositoryReferenceName: $ref,
+                composeFile: $compose,
+                repositoryAuthentication: true,
+                repositoryUsername: $user,
+                repositoryPassword: $pass,
+                env: $env,
+                additionalFiles: [],
+                fromAppTemplate: false,
+                tlsskipVerify: false,
+                autoUpdate: {
+                  forcePullImage: false,
+                  forceUpdate: false,
+                  interval: "5m",
+                  webhook: $uuid
+                }
+              }')
+
+            CREATE_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
+              -H "X-API-Key: $PORTAINER_API_KEY" \
+              -H "Content-Type: application/json" \
+              "$PORTAINER_URL/api/stacks/create/standalone/repository?endpointId=$PORTAINER_ENDPOINT_ID" \
+              -d "$PAYLOAD")
+
+            CREATE_HTTP_STATUS=$(printf '%s\n' "$CREATE_RESPONSE" | tail -n1)
+            CREATE_BODY=$(printf '%s\n' "$CREATE_RESPONSE" | sed '$d')
+
+            echo "POST /api/stacks/create status: $CREATE_HTTP_STATUS"
+
+            if [ "${CREATE_HTTP_STATUS:-0}" -ge 400 ]; then
+              echo "Failed to create stack:"
+              printf '%s\n' "$CREATE_BODY"
+              exit 1
+            fi
+
+            STACK_ID=$(printf '%s\n' "$CREATE_BODY" | jq -r '.Id // empty')
+
+            if [ -z "$STACK_ID" ]; then
+              echo "Stack creation response did not include an Id:"
+              printf '%s\n' "$CREATE_BODY"
+              exit 1
+            fi
+
+            echo "Stack created with ID: $STACK_ID"
+          else
+            echo "Stack exists with ID: $STACK_ID"
+          fi
+
+          echo "stack_id=$STACK_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve webhook ID
+        id: webhook
+        env:
+          PORTAINER_URL: {{ '${{ vars.PORTAINER_URL }}' }}
+          PORTAINER_API_KEY: {{ '${{ secrets.PORTAINER_ACCESS_TOKEN }}' }}
+        run: |
+          set -eo pipefail
+
+          require_env() {
+            local name="$1"
+            if [ -z "${!name:-}" ]; then
+              echo "ERROR: Required environment variable '$name' is not set"
+              exit 2
+            fi
+          }
+
+          for var in PORTAINER_URL PORTAINER_API_KEY; do
+            require_env "$var"
+          done
+
+          STACK_ID={{ '"${{ steps.stack.outputs.stack_id }}"' }}
+
+          if [ -z "$STACK_ID" ]; then
+            echo "ERROR: Stack ID output is empty"
+            exit 2
+          fi
+
+          WEBHOOK_RESPONSE=$(curl -sS -w "\n%{http_code}" \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID")
+
+          WEBHOOK_HTTP_STATUS=$(printf '%s\n' "$WEBHOOK_RESPONSE" | tail -n1)
+          WEBHOOK_BODY=$(printf '%s\n' "$WEBHOOK_RESPONSE" | sed '$d')
+
+          echo "GET /api/stacks/$STACK_ID status: $WEBHOOK_HTTP_STATUS"
+
+          if [ "${WEBHOOK_HTTP_STATUS:-0}" -ge 400 ]; then
+            echo "Failed to fetch stack details:"
+            printf '%s\n' "$WEBHOOK_BODY"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "$WEBHOOK_BODY" | jq -e . >/dev/null 2>&1; then
+            echo "Stack response was not valid JSON:"
+            printf '%s\n' "$WEBHOOK_BODY"
+            exit 1
+          fi
+
+          WEBHOOK_ID=$(printf '%s\n' "$WEBHOOK_BODY" | jq -r '.AutoUpdate.Webhook // empty')
+
+          if [ -z "$WEBHOOK_ID" ]; then
+            echo "ERROR: Webhook not found in stack metadata"
+            printf '%s\n' "$WEBHOOK_BODY"
+            exit 1
+          fi
+
+          echo "webhook_id=$WEBHOOK_ID" >> $GITHUB_OUTPUT
+
+      - name: Trigger stack redeploy
+        env:
+          PORTAINER_URL: {{ '${{ vars.PORTAINER_URL }}' }}
+        run: |
+          set -eo pipefail
+
+          if [ -z "${PORTAINER_URL:-}" ]; then
+            echo "ERROR: PORTAINER_URL environment variable is not set"
+            exit 2
+          fi
+
+          WEBHOOK_ID={{ '"${{ steps.webhook.outputs.webhook_id }}"' }}
+
+          if [ -z "$WEBHOOK_ID" ]; then
+            echo "ERROR: Webhook ID output is empty"
+            exit 2
+          fi
+
+          echo "Triggering redeploy via webhook $WEBHOOK_ID"
+
+          curl -sS -X POST \
+            "$PORTAINER_URL/api/webhooks/$WEBHOOK_ID"
+

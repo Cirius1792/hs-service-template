@@ -1,6 +1,11 @@
 # Homelab Service Template
 
-This repository is a Cookiecutter template that bootstraps homelab services with Docker Compose, Traefik, Homepage, and optional SWAG reverse-proxy automation. The generated project contains everything needed to deploy from Git, validate with CI, and document required variables.
+This repository is a Cookiecutter template that bootstraps homelab services with:
+1. Automatic deploy/redeploy in Docker using [Portainer](https://docs.portainer.io/start/install-ce)
+2. [SWAG](https://docs.linuxserver.io/general/swag/) reverse proxy setup
+3. [Homepage](https://github.com/gethomepage/homepage) link creation
+
+The generated project contains everything needed to deploy from Git, validate with CI, and document required variables.
 
 ---
 
@@ -10,10 +15,11 @@ Install the following where you run Cookiecutter:
 
 - `git`
 - `cookiecutter`
-- `docker` (optional, for local runs)
 - `sh`, `gitleaks`, `node` + `semantic-release` if you plan to execute the CI scripts locally
 
 On the remote host, ensure Docker Compose v2 and the external `servie_lan` network exist.
+
+The external lan is ment to make the to be deployed service communicate with other services or with the reverse proxy in order to be exposed.
 
 ---
 
@@ -46,10 +52,8 @@ After generation you get a ready-to-commit repository under `{{cookiecutter.repo
 ## Template contents
 
 - `docker-compose.yml` – service definition with Traefik and Homepage labels.
-- `.env.example` – required runtime variables (`SERVICE_NAME`, `BASE_DOMAIN`, `TZ`, `PUID`, `PGID`).
-- `scripts/deploy_swag_config.sh` – uploads a single `*.subdomain.conf` or `*.subfolder.conf` file, preserving its filename on the remote SWAG host.
-- `.github/workflows/deploy-swag-config.yml` – runs on pushes to proxy files or manual dispatch and invokes the deploy script.
-- `scripts` – sh scripts used by ci processes.
+- `stack.env` – required runtime variables (`SERVICE_NAME`, `BASE_DOMAIN`, `TZ`, `PUID`, `PGID`).
+- `.github` - contains the ci workflows
 
 ---
 
@@ -80,6 +84,25 @@ Use the command below from a machine that already is able to connect to the remo
 ```bash
 ssh-keyscan hostname -p port 
 ```
+---
+## Automatich Stack Deploy and Update Setup
+
+The repository will contain the required workflows to automatically handle in Portainer: 
+- New stack creation, linked to the repository with automatic updates enabled
+- Automatic redeploy using webhooks
+
+The stack will have the same name of the repository, which will be used also to retrieve the webhook id, therefore, changing the repository name will cause a new stack to be created (this operation could potentially fail if the old stack have not been destroyed).
+
+In order to make the deploy to work, you need to configure your gitea/github environment with the secrets and variables described below. 
+
+| Name | Type | Purpose |
+|------|------|---------|
+| `PORTAINER_ACCESS_TOKEN` | secret | Access token generated for your portainer user |
+| `GIT_USERNAME` | secret |  Git username to configure in Portianer| 
+| `GIT_TOKEN` | secret | Git token related to the GIT_USERNAME | 
+| `PORTAINER_URL` | variable |  Portinaer endpoint (excluded /api)| 
+| `PORTAINER_ENVIRONMENT_ID` | variable | Portinaer endpoint (excluded /api)| 
+
 ---
 
 ## Philosophy

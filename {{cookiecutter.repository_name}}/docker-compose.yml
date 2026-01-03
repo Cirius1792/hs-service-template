@@ -12,6 +12,7 @@ services:
     volumes:
       - /data/${SERVICE_NAME}:/config
     restart: unless-stopped
+    labels:
       - homepage.enable=true
       - homepage.name={{ cookiecutter.service_name | title }}
       - homepage.group={{ cookiecutter.service_group }}

@@ -41,6 +41,7 @@ jobs:
       - name: Assess configuration deployment
         id: config_plan
         run: |
+          {% raw %}
           set -euo pipefail
 
           CONFIG_DIR="configurations/data"
@@ -54,13 +55,13 @@ jobs:
           fi
 
           data_files=()
+          data_count=0
           for path in "$CONFIG_DIR"/*; do
             if [ -f "$path" ]; then
               data_files+=("$(basename "$path")")
+              data_count=$((data_count + 1))
             fi
           done
-
-          data_count=${#data_files[@]}
 
           declare -A locations
           entry_count=0
@@ -141,6 +142,7 @@ jobs:
 
           echo "map_file=$MAP_FILE" >> "$GITHUB_OUTPUT"
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          {% endraw %}
 
       - name: Configure known_hosts
         if: steps.config_plan.outputs.should_deploy == 'true' && secrets.DEPLOY_KNOWN_HOSTS != ''
@@ -366,6 +368,7 @@ jobs:
           DEPLOY_SSH_USER: {{ '${{ secrets.DEPLOY_SSH_USER }}' }}
           DEPLOY_SSH_PORT: {{ '${{ secrets.DEPLOY_SSH_PORT }}' }}
         run: |
+          {% raw %}
           set -euo pipefail
 
           MAP_FILE={{ '"${{ steps.config_plan.outputs.map_file }}"' }}
@@ -383,10 +386,11 @@ jobs:
 
           deployed_paths=()
           backup_flags=()
+          deployed_count=0
 
           rollback() {
             set +e
-            if [ "${#deployed_paths[@]}" -eq 0 ]; then
+            if [ "$deployed_count" -eq 0 ]; then
               return
             fi
             echo "Deployment failed; rolling back configuration files." >&2
@@ -453,6 +457,7 @@ jobs:
 
             deployed_paths+=("$dest_path")
             backup_flags+=("$backup_flag")
+            deployed_count=$((deployed_count + 1))
           done < "$MAP_FILE"
 
           for i in "${!deployed_paths[@]}"; do
@@ -462,6 +467,7 @@ jobs:
           done
 
           echo "Configuration deployment completed."
+          {% endraw %}
 
       - name: Trigger stack redeploy
         env:

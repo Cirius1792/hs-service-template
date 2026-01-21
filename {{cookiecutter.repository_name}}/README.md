@@ -26,6 +26,24 @@ HTTP endpoint exposed on port {{ cookiecutter.default_port }}.
 ## Monitoring
 The service can be monitored from Uptime Kuma using the public URL shown above.
 
+## Configuration deployment workflow
+The `deploy-stack.yml` workflow can also upload versioned configuration files stored in `configurations/data` to the remote host over SSH. Target paths are declared in `configurations/locations.ini`, one per line in the format:
+`<file_name>:/absolute/remote/path/<file_name>`
+
+Behavior rules:
+- If `configurations/data` and `configurations/locations.ini` are both empty, the workflow skips configuration deployment.
+- If a file exists in `configurations/data` without a matching line in `configurations/locations.ini`, the workflow fails.
+- If `configurations/locations.ini` references a file not present in `configurations/data`, the workflow fails.
+- If any upload fails, previously deployed files are restored from backups.
+
+### Required secrets
+Configure these items in the generated repository before using the configuration deploy step:
+- `DEPLOY_SSH_KEY` (secret): Private key used to connect to the remote host.
+- `DEPLOY_SSH_HOST` (secret): Hostname or IP address of the target server.
+- `DEPLOY_SSH_USER` (secret): SSH user allowed to manage the remote files.
+- `DEPLOY_SSH_PORT` (secret, optional): Non-default SSH port.
+- `DEPLOY_KNOWN_HOSTS` (secret, optional but recommended): Contents of the server's `known_hosts` entry to avoid host-key prompts.
+
 ## Reverse proxy deployment workflow
 The repository ships with a GitHub/Gitea Action (`.github/workflows/deploy-swag-config.yml`) that uploads SWAG nginx configs via `scripts/deploy_swag_config.sh` whenever a proxy file changes or on manual dispatch. The script preserves the original filename, validates nginx inside the `swag` container, and reloads the proxy only after a successful `nginx -t`.
 

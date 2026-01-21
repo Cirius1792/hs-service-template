@@ -1,0 +1,251 @@
+name: Deploy configuration files
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'configurations/**'
+      - '.github/workflows/deploy-configurations.yml'
+
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy-configs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Assess configuration deployment
+        id: config_plan
+        run: |
+          {% raw %}
+          set -euo pipefail
+
+          CONFIG_DIR="configurations/data"
+          LOCATIONS_FILE="configurations/locations.ini"
+          TMP_DIR="${RUNNER_TEMP:-/tmp}"
+          MAP_FILE="$TMP_DIR/config-deploy-map"
+
+          if [ ! -d "$CONFIG_DIR" ]; then
+            echo "Configuration directory '$CONFIG_DIR' not found; nothing to deploy."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          data_files=()
+          data_count=0
+          for path in "$CONFIG_DIR"/*; do
+            if [ -f "$path" ]; then
+              data_files+=("$(basename "$path")")
+              data_count=$((data_count + 1))
+            fi
+          done
+
+          declare -A locations
+          entry_count=0
+
+          if [ -f "$LOCATIONS_FILE" ]; then
+            while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+              line="$raw_line"
+              line="${line#"${line%%[![:space:]]*}"}"
+              line="${line%"${line##*[![:space:]]}"}"
+
+              if [ -z "$line" ]; then
+                continue
+              fi
+
+              case "$line" in
+                \#*)
+                  continue
+                  ;;
+              esac
+
+              if [[ "$line" != *:* ]]; then
+                echo "Invalid line in $LOCATIONS_FILE: $line" >&2
+                exit 1
+              fi
+
+              file_name="${line%%:*}"
+              target_path="${line#*:}"
+
+              if [ -z "$file_name" ] || [ -z "$target_path" ]; then
+                echo "Invalid mapping in $LOCATIONS_FILE: $line" >&2
+                exit 1
+              fi
+
+              if [ -n "${locations[$file_name]:-}" ]; then
+                echo "Duplicate mapping for '$file_name' in $LOCATIONS_FILE" >&2
+                exit 1
+              fi
+
+              locations["$file_name"]="$target_path"
+              entry_count=$((entry_count + 1))
+            done < "$LOCATIONS_FILE"
+          fi
+
+          if [ "$entry_count" -eq 0 ] && [ "$data_count" -eq 0 ]; then
+            echo "No configuration files to deploy."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$entry_count" -eq 0 ] && [ "$data_count" -gt 0 ]; then
+            echo "Configuration files exist in '$CONFIG_DIR' but $LOCATIONS_FILE has no entries." >&2
+            exit 1
+          fi
+
+          if [ "$entry_count" -gt 0 ] && [ "$data_count" -eq 0 ]; then
+            echo "$LOCATIONS_FILE contains entries but '$CONFIG_DIR' is empty." >&2
+            exit 1
+          fi
+
+          for file_name in "${!locations[@]}"; do
+            if [ ! -f "$CONFIG_DIR/$file_name" ]; then
+              echo "$LOCATIONS_FILE references missing file '$file_name' in '$CONFIG_DIR'." >&2
+              exit 1
+            fi
+          done
+
+          for file_name in "${data_files[@]}"; do
+            if [ -z "${locations[$file_name]:-}" ]; then
+              echo "Missing deployment path for '$file_name' in $LOCATIONS_FILE." >&2
+              exit 1
+            fi
+          done
+
+          : > "$MAP_FILE"
+          for file_name in "${data_files[@]}"; do
+            printf '%s|%s\n' "$file_name" "${locations[$file_name]}" >> "$MAP_FILE"
+          done
+
+          echo "map_file=$MAP_FILE" >> "$GITHUB_OUTPUT"
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          {% endraw %}
+
+      - name: Configure known_hosts
+        if: steps.config_plan.outputs.should_deploy == 'true' && secrets.DEPLOY_KNOWN_HOSTS != ''
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "{{ '${{ secrets.DEPLOY_KNOWN_HOSTS }}' }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Start ssh-agent
+        if: steps.config_plan.outputs.should_deploy == 'true'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: {{ '${{ secrets.DEPLOY_SSH_KEY }}' }}
+
+      - name: Deploy configuration files
+        if: steps.config_plan.outputs.should_deploy == 'true'
+        env:
+          DEPLOY_SSH_HOST: {{ '${{ secrets.DEPLOY_SSH_HOST }}' }}
+          DEPLOY_SSH_USER: {{ '${{ secrets.DEPLOY_SSH_USER }}' }}
+          DEPLOY_SSH_PORT: {{ '${{ secrets.DEPLOY_SSH_PORT }}' }}
+        run: |
+          {% raw %}
+          set -euo pipefail
+
+          MAP_FILE={{ '"${{ steps.config_plan.outputs.map_file }}"' }}
+
+          if [ -z "$MAP_FILE" ] || [ ! -f "$MAP_FILE" ]; then
+            echo "Configuration map file not found." >&2
+            exit 1
+          fi
+
+          : "${DEPLOY_SSH_HOST:?Set DEPLOY_SSH_HOST}"
+          : "${DEPLOY_SSH_USER:?Set DEPLOY_SSH_USER}"
+
+          SSH_PORT="${DEPLOY_SSH_PORT:-22}"
+          SSH_TARGET="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
+
+          deployed_paths=()
+          backup_flags=()
+          deployed_count=0
+
+          rollback() {
+            set +e
+            if [ "$deployed_count" -eq 0 ]; then
+              return
+            fi
+            echo "Deployment failed; rolling back configuration files." >&2
+            for i in "${!deployed_paths[@]}"; do
+              dest_path="${deployed_paths[$i]}"
+              had_backup="${backup_flags[$i]}"
+              if [ "$had_backup" = "1" ]; then
+                ssh -p "$SSH_PORT" "$SSH_TARGET" "if [ -f '${dest_path}.bak' ]; then mv '${dest_path}.bak' '${dest_path}'; fi"
+              else
+                ssh -p "$SSH_PORT" "$SSH_TARGET" "rm -f '${dest_path}'"
+              fi
+            done
+          }
+
+          trap 'rollback' ERR
+
+          while IFS='|' read -r file_name target_path; do
+            local_file="configurations/data/$file_name"
+            if [ ! -f "$local_file" ]; then
+              echo "Local file '$local_file' missing." >&2
+              exit 1
+            fi
+
+            tmp_name="config-deploy.$(date +%s).$$.$RANDOM"
+            remote_tmp="/tmp/${tmp_name}"
+
+            echo "Uploading $local_file to $SSH_TARGET:${target_path}"
+            scp -P "$SSH_PORT" "$local_file" "${SSH_TARGET}:${remote_tmp}"
+
+            result=$(ssh -p "$SSH_PORT" "$SSH_TARGET" \
+              "REMOTE_TMP='${remote_tmp}' REMOTE_PATH='${target_path}' LOCAL_BASENAME='${file_name}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          trap 'rm -f "$REMOTE_TMP"' EXIT
+
+          TARGET_PATH="$REMOTE_PATH"
+          DEST_PATH="$TARGET_PATH"
+
+          if [[ "$TARGET_PATH" == */ ]]; then
+            DEST_PATH="${TARGET_PATH%/}/${LOCAL_BASENAME}"
+          elif [ -d "$TARGET_PATH" ]; then
+            DEST_PATH="${TARGET_PATH%/}/${LOCAL_BASENAME}"
+          fi
+
+          BACKUP_PATH="${DEST_PATH}.bak"
+          BACKUP_EXISTS=0
+
+          if [ -f "$DEST_PATH" ]; then
+            cp "$DEST_PATH" "$BACKUP_PATH"
+            BACKUP_EXISTS=1
+          fi
+
+          install -Dm644 "$REMOTE_TMP" "$DEST_PATH"
+          printf '%s|%s\n' "$DEST_PATH" "$BACKUP_EXISTS"
+          REMOTE
+            )
+
+            dest_path="${result%%|*}"
+            backup_flag="${result##*|}"
+
+            if [ -z "$dest_path" ]; then
+              echo "Failed to resolve remote destination for '$file_name'." >&2
+              exit 1
+            fi
+
+            deployed_paths+=("$dest_path")
+            backup_flags+=("$backup_flag")
+            deployed_count=$((deployed_count + 1))
+          done < "$MAP_FILE"
+
+          for i in "${!deployed_paths[@]}"; do
+            if [ "${backup_flags[$i]}" = "1" ]; then
+              ssh -p "$SSH_PORT" "$SSH_TARGET" "rm -f '${deployed_paths[$i]}.bak'"
+            fi
+          done
+
+          echo "Configuration deployment completed."
+          {% endraw %}

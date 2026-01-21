@@ -27,7 +27,7 @@ HTTP endpoint exposed on port {{ cookiecutter.default_port }}.
 The service can be monitored from Uptime Kuma using the public URL shown above.
 
 ## Configuration deployment workflow
-The `deploy-stack.yml` workflow can also upload versioned configuration files stored in `configurations/data` to the remote host over SSH. Target paths are declared in `configurations/locations.ini`, one per line in the format:
+The `deploy-configurations.yml` workflow uploads versioned configuration files stored in `configurations/data` to the remote host over SSH. Target paths are declared in `configurations/locations.ini`, one per line in the format:
 `<file_name>:/absolute/remote/path/<file_name>`
 
 Behavior rules:
@@ -36,8 +36,8 @@ Behavior rules:
 - If `configurations/locations.ini` references a file not present in `configurations/data`, the workflow fails.
 - If any upload fails, previously deployed files are restored from backups.
 
-### Required secrets
-Configure these items in the generated repository before using the configuration deploy step:
+### Required secrets for configuration deployment
+Configure these items in the generated repository before using the configuration deploy workflow:
 - `DEPLOY_SSH_KEY` (secret): Private key used to connect to the remote host.
 - `DEPLOY_SSH_HOST` (secret): Hostname or IP address of the target server.
 - `DEPLOY_SSH_USER` (secret): SSH user allowed to manage the remote files.

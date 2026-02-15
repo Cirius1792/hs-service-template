@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard",
+  "assignees": ["clt"],
+  "labels": ["renovate"],
+  "configMigration": true,
+  "prHourlyLimit": 0,
+  "docker-compose": {
+    "hostRules": [
+      {
+        "matchHost": "docker.io",
+        "concurrentRequestLimit": 2
+      }
+    ],
+    "packageRules": [
+      {
+        "matchPackageNames": "redis",
+        "matchCurrentVersion": "6.2-alpine",
+        "enabled": false
+      },
+      {
+        "matchPackageNames": "tensorchord/pgvecto-rs",
+        "enabled": false
+      }
+    ]
+  }
+}
+

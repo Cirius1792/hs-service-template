@@ -1,5 +1,6 @@
 
 services:
+# noop change to trigger deploy workflow
   {{ cookiecutter.service_name }}:
     image: your-image:tag
     container_name: ${SERVICE_NAME}

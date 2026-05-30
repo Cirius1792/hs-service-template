@@ -18,9 +18,15 @@ jobs:
   deploy-configs:
     runs-on: ubuntu-latest
 
+    outputs:
+      should_deploy: {{ '${{ steps.config_plan.outputs.should_deploy }}' }}
+      should_trigger_redeploy: {{ '${{ steps.redeploy_plan.outputs.should_trigger_redeploy }}' }}
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Assess configuration deployment
         id: config_plan
@@ -129,15 +135,81 @@ jobs:
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           {% endraw %}
 
-      - name: Configure known_hosts
-        if: steps.config_plan.outputs.should_deploy == 'true' && secrets.DEPLOY_KNOWN_HOSTS != ''
+      - name: Assess redeploy responsibility
+        id: redeploy_plan
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "{{ '${{ secrets.DEPLOY_KNOWN_HOSTS }}' }}" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          {% raw %}
+          set -euo pipefail
 
-      - name: Start ssh-agent
+          if [ "${{ steps.config_plan.outputs.should_deploy }}" != "true" ]; then
+            echo "should_trigger_redeploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run; trigger redeploy after configuration upload."
+            echo "should_trigger_redeploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE_SHA="${{ github.event.before }}"
+          AFTER_SHA="${{ github.sha }}"
+
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "Push has no usable before SHA; trigger redeploy after configuration upload."
+            echo "should_trigger_redeploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA")
+
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(docker-compose\.yml|stack\.env|\.github/workflows/deploy-stack\.yml|\.github/workflows/reusable-portainer-redeploy\.yml)$'; then
+            echo "Stack deployment workflow will handle the redeploy for this push."
+            echo "should_trigger_redeploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Configuration workflow must trigger the redeploy."
+            echo "should_trigger_redeploy=true" >> "$GITHUB_OUTPUT"
+          fi
+          {% endraw %}
+
+      - name: Determine credential namespace
+        id: credential_probe
+        run: |
+          if [ -n "{{ '${{ vars.CONFIG_DEPLOY_SSH_HOST }}' }}" ]; then
+            echo "namespace=config" >> "$GITHUB_OUTPUT"
+          else
+            echo "namespace=swag" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure known_hosts
         if: steps.config_plan.outputs.should_deploy == 'true'
+        env:
+          CONFIG_DEPLOY_KNOWN_HOSTS: {{ '${{ secrets.CONFIG_DEPLOY_KNOWN_HOSTS }}' }}
+          DEPLOY_KNOWN_HOSTS: {{ '${{ secrets.DEPLOY_KNOWN_HOSTS }}' }}
+        run: |
+          set -euo pipefail
+          if [ "{{ '${{ steps.credential_probe.outputs.namespace }}' }}" = "config" ]; then
+            SSH_KNOWN_HOSTS="${CONFIG_DEPLOY_KNOWN_HOSTS:-}"
+          else
+            SSH_KNOWN_HOSTS="${DEPLOY_KNOWN_HOSTS:-}"
+          fi
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            mkdir -p ~/.ssh
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+            echo "known_hosts configured for namespace={{ '${{ steps.credential_probe.outputs.namespace }}' }}."
+          else
+            echo "No known_hosts secret in namespace={{ '${{ steps.credential_probe.outputs.namespace }}' }}; host-key verification may prompt."
+          fi
+
+      - name: Start ssh-agent (separate config host)
+        if: steps.credential_probe.outputs.namespace == 'config' && steps.config_plan.outputs.should_deploy == 'true'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: {{ '${{ secrets.CONFIG_DEPLOY_SSH_KEY }}' }}
+
+      - name: Start ssh-agent (same host as SWAG)
+        if: steps.credential_probe.outputs.namespace == 'swag' && steps.config_plan.outputs.should_deploy == 'true'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: {{ '${{ secrets.DEPLOY_SSH_KEY }}' }}
@@ -145,22 +217,39 @@ jobs:
       - name: Deploy configuration files
         if: steps.config_plan.outputs.should_deploy == 'true'
         env:
+          # Config namespace (vars)
+          CONFIG_DEPLOY_SSH_HOST: {{ '${{ vars.CONFIG_DEPLOY_SSH_HOST }}' }}
+          CONFIG_DEPLOY_SSH_USER: {{ '${{ vars.CONFIG_DEPLOY_SSH_USER }}' }}
+          CONFIG_DEPLOY_SSH_PORT: {{ '${{ vars.CONFIG_DEPLOY_SSH_PORT }}' }}
+          # SWAG namespace (secrets — fallback)
           DEPLOY_SSH_HOST: {{ '${{ secrets.DEPLOY_SSH_HOST }}' }}
           DEPLOY_SSH_USER: {{ '${{ secrets.DEPLOY_SSH_USER }}' }}
           DEPLOY_SSH_PORT: {{ '${{ secrets.DEPLOY_SSH_PORT }}' }}
+          # Runtime selector from probe
+          CREDENTIAL_NAMESPACE: {{ '${{ steps.credential_probe.outputs.namespace }}' }}
         run: |
           {% raw %}
           set -euo pipefail
 
-          MAP_FILE={{ '"${{ steps.config_plan.outputs.map_file }}"' }}
+          # ── Resolve SSH credentials from the active namespace ──
+          if [ "$CREDENTIAL_NAMESPACE" = "config" ]; then
+            : "${CONFIG_DEPLOY_SSH_HOST:?Set CONFIG_DEPLOY_SSH_HOST}"
+            : "${CONFIG_DEPLOY_SSH_USER:?Set CONFIG_DEPLOY_SSH_USER}"
+            DEPLOY_SSH_HOST="$CONFIG_DEPLOY_SSH_HOST"
+            DEPLOY_SSH_USER="$CONFIG_DEPLOY_SSH_USER"
+            DEPLOY_SSH_PORT="${CONFIG_DEPLOY_SSH_PORT:-22}"
+          else
+            : "${DEPLOY_SSH_HOST:?Set DEPLOY_SSH_HOST (same host as SWAG)}"
+            : "${DEPLOY_SSH_USER:?Set DEPLOY_SSH_USER}"
+            DEPLOY_SSH_PORT="${DEPLOY_SSH_PORT:-22}"
+          fi
+
+          MAP_FILE="${{ steps.config_plan.outputs.map_file }}"
 
           if [ -z "$MAP_FILE" ] || [ ! -f "$MAP_FILE" ]; then
             echo "Configuration map file not found." >&2
             exit 1
           fi
-
-          : "${DEPLOY_SSH_HOST:?Set DEPLOY_SSH_HOST}"
-          : "${DEPLOY_SSH_USER:?Set DEPLOY_SSH_USER}"
 
           SSH_PORT="${DEPLOY_SSH_PORT:-22}"
           SSH_TARGET="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
@@ -249,3 +338,18 @@ jobs:
 
           echo "Configuration deployment completed."
           {% endraw %}
+
+  redeploy-stack:
+    needs: deploy-configs
+    if: needs.deploy-configs.outputs.should_trigger_redeploy == 'true'
+    uses: ./.github/workflows/reusable-portainer-redeploy.yml
+    with:
+      compose_file_path: docker-compose.yml
+      env_file: stack.env
+      repo_ref: refs/heads/main
+      portainer_url: {{ '${{ vars.PORTAINER_URL }}' }}
+      portainer_endpoint_id: {{ '${{ vars.PORTAINER_ENVIRONMENT_ID }}' }}
+    secrets:
+      portainer_access_token: {{ '${{ secrets.PORTAINER_ACCESS_TOKEN }}' }}
+      git_username: {{ '${{ secrets.GIT_USERNAME }}' }}
+      git_token: {{ '${{ secrets.GIT_TOKEN }}' }}

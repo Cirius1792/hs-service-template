@@ -37,12 +37,28 @@ Behavior rules:
 - If any upload fails, previously deployed files are restored from backups.
 
 ### Required secrets for configuration deployment
-Configure these items in the generated repository before using the configuration deploy workflow:
-- `DEPLOY_SSH_KEY` (secret): Private key used to connect to the remote host.
-- `DEPLOY_SSH_HOST` (secret): Hostname or IP address of the target server.
-- `DEPLOY_SSH_USER` (secret): SSH user allowed to manage the remote files.
-- `DEPLOY_SSH_PORT` (secret, optional): Non-default SSH port.
-- `DEPLOY_KNOWN_HOSTS` (secret, optional but recommended): Contents of the server's `known_hosts` entry to avoid host-key prompts.
+
+The configuration deployment workflow targets the **same machine as SWAG** by default. Set `CONFIG_DEPLOY_SSH_HOST` (a repository **variable**) to target a **separate machine** instead.
+
+#### Targeting the same machine as SWAG (default)
+
+No additional credentials needed — the workflow reuses:
+- `DEPLOY_SSH_KEY`, `DEPLOY_SSH_HOST`, `DEPLOY_SSH_USER` (secrets, already configured for SWAG)
+- `DEPLOY_SSH_PORT`, `DEPLOY_KNOWN_HOSTS` (optional secrets)
+
+#### Targeting a separate machine
+
+Configure these additional items:
+
+| Name | Type | Purpose |
+|------|------|---------|
+| `CONFIG_DEPLOY_SSH_HOST` | variable | Hostname/IP of the config target |
+| `CONFIG_DEPLOY_SSH_USER` | variable | SSH user allowed to manage remote files |
+| `CONFIG_DEPLOY_SSH_PORT` | variable (optional) | Non-default SSH port (defaults to 22) |
+| `CONFIG_DEPLOY_SSH_KEY` | secret | Private key for SSH access |
+| `CONFIG_DEPLOY_KNOWN_HOSTS` | secret (optional but recommended) | Server's `known_hosts` entry |
+
+When `CONFIG_DEPLOY_SSH_HOST` is set, the workflow uses `CONFIG_DEPLOY_*` credentials exclusively. When absent, it falls back to `DEPLOY_SSH_*`.
 
 ## Reverse proxy deployment workflow
 The repository ships with a GitHub/Gitea Action (`.github/workflows/deploy-swag-config.yml`) that uploads SWAG nginx configs via `scripts/deploy_swag_config.sh` whenever a proxy file changes or on manual dispatch. The script preserves the original filename, validates nginx inside the `swag` container, and reloads the proxy only after a successful `nginx -t`.

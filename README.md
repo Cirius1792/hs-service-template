@@ -106,11 +106,28 @@ Workflow behavior:
 
 ### How to populate DEPLOY_KNOWN_HOSTS
 
-Use the command below from a machine that already is able to connect to the remote host and use the output of this command as it is to populate the DEPLOY_KNOWN_HOSTS secret. 
+Use the command below from a machine that already is able to connect to the remote host and use the output of this command as it is to populate the DEPLOY_KNOWN_HOSTS secret.
 
 ```bash
-ssh-keyscan hostname -p port 
+ssh-keyscan hostname -p port
 ```
+
+---
+
+## Deploy Service Configuration Files
+
+If the generated repository includes `configurations/data/` and `configurations/locations.ini`, configure these items to deploy service configuration files over SSH:
+
+| Name | Type | Purpose |
+|------|------|---------|
+| `CONFIG_DEPLOY_SSH_HOST` | variable (optional) | Set to deploy configs to a **separate** host; omit to reuse `DEPLOY_SSH_*` credentials (same machine as SWAG) |
+| `CONFIG_DEPLOY_SSH_USER` | variable (required if `CONFIG_DEPLOY_SSH_HOST` is set) | SSH user with permissions to manage remote config files |
+| `CONFIG_DEPLOY_SSH_PORT` | variable (optional) | Non-default SSH port (defaults to 22) |
+| `CONFIG_DEPLOY_SSH_KEY` | secret (required if `CONFIG_DEPLOY_SSH_HOST` is set) | Private key for SSH access |
+| `CONFIG_DEPLOY_KNOWN_HOSTS` | secret (optional but recommended) | `known_hosts` entry for the config target |
+
+**Fallback behavior:** When `CONFIG_DEPLOY_SSH_HOST` is absent, the workflow reuses `DEPLOY_SSH_KEY`, `DEPLOY_SSH_HOST`, `DEPLOY_SSH_USER`, `DEPLOY_SSH_PORT`, and (optionally) `DEPLOY_KNOWN_HOSTS` from the reverse proxy configuration above.
+
 ---
 
 ## Philosophy

@@ -74,3 +74,56 @@ def test_proxy_disabled_omits_swag_directory(tmp_path: Path) -> None:
 
     readme = (project / "README.md").read_text()
     assert "generated without a SWAG configuration file" in readme
+
+
+def test_cruft_workflow_exists(tmp_path: Path) -> None:
+    """The cruft-update workflow is generated in every rendered project."""
+    project = render_project(tmp_path)
+
+    workflow = project / ".github/workflows/cruft-update.yml"
+    assert workflow.is_file(), "cruft-update.yml should be rendered"
+
+    content = workflow.read_text()
+    assert "{{ cookiecutter" not in content, (
+        "No raw Cookiecutter placeholders should remain"
+    )
+    assert "{%" not in content, "No raw Jinja tags should remain"
+
+
+def test_cruft_workflow_triggers(tmp_path: Path) -> None:
+    """The workflow has both schedule and manual triggers."""
+    project = render_project(tmp_path)
+    workflow = project / ".github/workflows/cruft-update.yml"
+    content = workflow.read_text()
+
+    assert "schedule:" in content, "Must have scheduled trigger"
+    assert "cron:" in content, "Must have cron schedule"
+    assert "workflow_dispatch" in content, "Must have manual trigger"
+
+
+def test_cruft_workflow_targets_gitea(tmp_path: Path) -> None:
+    """The PR creation step uses the correct Gitea API endpoint."""
+    project = render_project(tmp_path)
+    workflow = project / ".github/workflows/cruft-update.yml"
+    content = workflow.read_text()
+
+    assert "gitea.cltec.dev" in content, (
+        "Must target gitea.cltec.dev API"
+    )
+    assert "api/v1/repos" in content, (
+        "Must use Gitea API v1"
+    )
+
+
+def test_cruft_workflow_reuses_git_token(tmp_path: Path) -> None:
+    """The workflow uses GIT_TOKEN, not a new secret."""
+    project = render_project(tmp_path)
+    workflow = project / ".github/workflows/cruft-update.yml"
+    content = workflow.read_text()
+
+    assert "secrets.GIT_TOKEN" in content, (
+        "Must reuse existing GIT_TOKEN secret"
+    )
+    assert "secrets.GITEA_TOKEN" not in content, (
+        "Must not reference a separate GITEA_TOKEN secret"
+    )

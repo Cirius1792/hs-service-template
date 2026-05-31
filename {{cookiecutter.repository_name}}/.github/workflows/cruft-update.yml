@@ -1,0 +1,84 @@
+name: Cruft template update
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cruft-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install cruft
+        run: pip install cruft
+
+      - name: Check for template updates
+        id: check
+        run: |
+          set -e
+          if cruft check; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply template updates
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          set -e
+          git config user.name "cruft-bot"
+          git config user.email "cruft-bot@cltec.dev"
+          cruft update --skip-apply-ask --refresh-private-variables
+
+      - name: Push update branch
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          set -e
+          git checkout -b cruft/update
+          git push origin cruft/update --force
+
+      - name: Create PR on Gitea
+        if: steps.check.outputs.has_changes == 'true'
+        env:
+          GITEA_TOKEN: {{ '${{ secrets.GIT_TOKEN }}' }}
+        run: |
+          {% raw %}
+          set -e
+
+          RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://gitea.cltec.dev/api/v1/repos/${{ gitea.repository }}/pulls" \
+            -H "Authorization: token $GITEA_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(cat <<'BODY'
+          {
+            "title": "chore: template update via cruft",
+            "head": "cruft/update",
+            "base": "main",
+            "body": "Automated update from the [hs-service-template](https://gitea.cltec.dev/clt/hs-service-template).\n\nReview the changes and merge to accept, or close to reject."
+          }
+          BODY
+          )")
+
+          HTTP_STATUS=$(printf '%s\n' "$RESPONSE" | tail -n1)
+
+          case "$HTTP_STATUS" in
+            201) echo "PR created successfully." ;;
+            409) echo "PR already exists for branch cruft/update — skipping." ;;
+            *)
+              echo "Unexpected HTTP status: $HTTP_STATUS"
+              printf '%s\n' "$RESPONSE" | sed '$d'
+              exit 1
+              ;;
+          esac
+          {% endraw %}

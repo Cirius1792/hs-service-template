@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from cookiecutter.main import cookiecutter  # type: ignore[import]
@@ -17,6 +18,14 @@ BASE_CONTEXT = {
     "default_port": "8080",
     "include_proxy_config": "y",
 }
+
+EXPECTED_CRUFT_SKIP = [
+    "docker-compose.yml",
+    "stack.env",
+    "configurations/locations.ini",
+    "configurations/data/**",
+    "swag/proxy-confs/**",
+]
 
 
 def render_project(tmp_path: Path, **overrides: str) -> Path:
@@ -127,3 +136,21 @@ def test_cruft_workflow_reuses_git_token(tmp_path: Path) -> None:
     assert "secrets.GITEA_TOKEN" not in content, (
         "Must not reference a separate GITEA_TOKEN secret"
     )
+
+
+def test_generated_pyproject_configures_cruft_skip_policy(tmp_path: Path) -> None:
+    """Generated repos persist cruft skip rules for customized files."""
+    project = render_project(tmp_path)
+
+    pyproject = project / "pyproject.toml"
+    assert pyproject.is_file(), "pyproject.toml should be rendered"
+
+    data = tomllib.loads(pyproject.read_text())
+
+    assert data == {
+        "tool": {
+            "cruft": {
+                "skip": EXPECTED_CRUFT_SKIP,
+            }
+        }
+    }

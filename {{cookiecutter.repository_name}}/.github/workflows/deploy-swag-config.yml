@@ -25,7 +25,7 @@ jobs:
       SWAG_REMOTE_CONFIG_PATH_SECRET: {{ '${{ secrets.SWAG_REMOTE_CONFIG_PATH }}' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configure known_hosts
         if: secrets.DEPLOY_KNOWN_HOSTS != ''
@@ -35,7 +35,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Start ssh-agent
-        uses: webfactory/ssh-agent@v0.9.1
+        uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: {{ '${{ secrets.DEPLOY_SSH_KEY }}' }}
 

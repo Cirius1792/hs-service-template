@@ -136,5 +136,8 @@ If the generated repository includes `configurations/data/` and `configurations/
 - All configuration is expressed as code and validated with portable tooling.
 - Reverse proxy automation is opt-in and safe by default.
 - No secrets committed—environment variables live in `.env` or CI secrets.
+- Template auto-updates via [cruft](https://cruft.github.io/cruft/) keep every
+  generated repo in sync with template improvements. A weekly Gitea Action
+  detects changes, re-renders the template, and opens a pull request for review.
 
 With these conventions, rolling out a new homelab service is as simple as generating the repo, configuring the stack, and pushing to main. All supporting automation (validation, deployment, releases) is ready out of the box.

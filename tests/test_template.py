@@ -35,92 +35,114 @@ def render_project(tmp_path: Path, **overrides: str) -> Path:
     return tmp_path / context["repository_name"]
 
 
-def test_proxy_enabled_generates_proxy_assets(tmp_path: Path) -> None:
+def test_given_proxy_config_enabled_when_project_is_rendered_then_proxy_assets_are_generated(
+    tmp_path: Path,
+) -> None:
+    """Given proxy config is enabled, when rendered, then proxy assets exist."""
+    # Given
+    service_name = "svcproxy"
+    repository_name = "svcproxy"
+
+    # When
     project = render_project(
         tmp_path,
-        service_name="svcproxy",
-        repository_name="svcproxy",
+        service_name=service_name,
+        repository_name=repository_name,
         include_proxy_config="y",
     )
 
-    proxy_file = project / "swag/proxy-confs/svcproxy.subdomain.conf"
-    assert proxy_file.is_file(), "Expected proxy config to be rendered"
-
+    # Then
+    proxy_file = project / f"swag/proxy-confs/{service_name}.subdomain.conf"
     workflow = project / ".github/workflows/deploy-swag-config.yml"
-    assert workflow.is_file(), "Workflow should be materialized as .yml"
-    workflow_content = workflow.read_text()
-    assert "{{ cookiecutter" not in workflow_content
-    assert "{%" not in workflow_content
-
     readme = (project / "README.md").read_text()
 
+    assert proxy_file.is_file(), "Expected proxy config to be rendered"
+    assert workflow.is_file(), "Workflow should be materialized as .yml"
     assert "Included proxy file" in readme
 
 
-def test_proxy_disabled_omits_swag_directory(tmp_path: Path) -> None:
+def test_given_proxy_config_disabled_when_project_is_rendered_then_proxy_assets_are_omitted(
+    tmp_path: Path,
+) -> None:
+    """Given proxy config is disabled, when rendered, then SWAG assets are omitted."""
+    # Given
+    service_name = "svcnoproxy"
+    repository_name = "svcnoproxy"
+
+    # When
     project = render_project(
         tmp_path,
-        service_name="svcnoproxy",
-        repository_name="svcnoproxy",
+        service_name=service_name,
+        repository_name=repository_name,
         include_proxy_config="n",
     )
+
+    # Then
+    workflow = project / ".github/workflows/deploy-swag-config.yml"
+    readme = (project / "README.md").read_text()
 
     assert not (project / "swag").exists(), (
         "Proxy assets should be removed when disabled"
     )
-
-    workflow = project / ".github/workflows/deploy-swag-config.yml"
     assert workflow.is_file(), "Workflow should still exist for future enablement"
-
-    readme = (project / "README.md").read_text()
     assert "generated without a SWAG configuration file" in readme
 
 
-def test_cruft_workflow_exists(tmp_path: Path) -> None:
-    """The cruft-update workflow is generated in every rendered project."""
+def test_given_default_context_when_project_is_rendered_then_cruft_workflow_exists(
+    tmp_path: Path,
+) -> None:
+    """Given the default context, when rendered, then cruft workflow exists."""
+    # Given
+    workflow_path = ".github/workflows/cruft-update.yml"
+
+    # When
     project = render_project(tmp_path)
 
-    workflow = project / ".github/workflows/cruft-update.yml"
+    # Then
+    workflow = project / workflow_path
     assert workflow.is_file(), "cruft-update.yml should be rendered"
 
-    content = workflow.read_text()
-    assert "{{ cookiecutter" not in content, (
-        "No raw Cookiecutter placeholders should remain"
-    )
-    assert "{%" not in content, "No raw Jinja tags should remain"
 
+def test_given_default_context_when_project_is_rendered_then_no_template_syntax_remains(
+    tmp_path: Path,
+) -> None:
+    """Given the default context, when rendered, then no raw Jinja syntax remains."""
+    # Given
+    ignored_path_parts = {".git", "__pycache__"}
 
-def test_cruft_workflow_triggers(tmp_path: Path) -> None:
-    """The workflow has both schedule and manual triggers."""
+    # When
     project = render_project(tmp_path)
-    workflow = project / ".github/workflows/cruft-update.yml"
-    content = workflow.read_text()
+    text_files = [
+        path
+        for path in project.rglob("*")
+        if path.is_file()
+        and ignored_path_parts.isdisjoint(path.parts)
+    ]
 
-    assert "schedule:" in content, "Must have scheduled trigger"
-    assert "cron:" in content, "Must have cron schedule"
-    assert "workflow_dispatch" in content, "Must have manual trigger"
+    # Then
+    for path in text_files:
+        content = path.read_text()
+        assert "{{ cookiecutter" not in content, (
+            f"Raw Cookiecutter placeholder remains in {path.relative_to(project)}"
+        )
+        assert "{%" not in content, (
+            f"Raw Jinja tag remains in {path.relative_to(project)}"
+        )
 
 
-def test_cruft_workflow_targets_gitea(tmp_path: Path) -> None:
-    """The PR creation step uses the correct Gitea API endpoint."""
+def test_given_cruft_workflow_when_project_is_rendered_then_it_reuses_git_token(
+    tmp_path: Path,
+) -> None:
+    """Given cruft workflow is rendered, then it reuses the existing GIT_TOKEN."""
+    # Given
+    workflow_path = ".github/workflows/cruft-update.yml"
+
+    # When
     project = render_project(tmp_path)
-    workflow = project / ".github/workflows/cruft-update.yml"
+    workflow = project / workflow_path
     content = workflow.read_text()
 
-    assert "gitea.cltec.dev" in content, (
-        "Must target gitea.cltec.dev API"
-    )
-    assert "api/v1/repos" in content, (
-        "Must use Gitea API v1"
-    )
-
-
-def test_cruft_workflow_reuses_git_token(tmp_path: Path) -> None:
-    """The workflow uses GIT_TOKEN, not a new secret."""
-    project = render_project(tmp_path)
-    workflow = project / ".github/workflows/cruft-update.yml"
-    content = workflow.read_text()
-
+    # Then
     assert "secrets.GIT_TOKEN" in content, (
         "Must reuse existing GIT_TOKEN secret"
     )

@@ -26,6 +26,35 @@ HTTP endpoint exposed on port {{ cookiecutter.default_port }}.
 ## Monitoring
 The service can be monitored from Uptime Kuma using the public URL shown above.
 
+## Template auto-updates
+
+This repository includes a weekly workflow (`.github/workflows/cruft-update.yml`) that checks
+for updates to the upstream [hs-service-template](https://gitea.cltec.dev/clt/hs-service-template).
+When new template changes are detected, `cruft` re-renders the template with this project's
+saved variables and opens a pull request for review.
+
+- **Schedule:** every Monday at 3am UTC
+- **Manual trigger:** available via `workflow_dispatch` in the Actions tab
+- **Authentication:** reuses the existing `GIT_TOKEN` secret
+
+### Skipping files from updates
+
+To prevent cruft from updating specific files, add them to the `skip` list in
+`.cruft.json`:
+
+```json
+{
+  "skip": ["docker-compose.yml", "stack.env"]
+}
+```
+
+Or via `pyproject.toml`:
+
+```toml
+[tool.cruft]
+skip = ["docker-compose.yml", "stack.env"]
+```
+
 ## Configuration deployment workflow
 The `deploy-configurations.yml` workflow uploads versioned configuration files stored in `configurations/data` to the remote host over SSH. Target paths are declared in `configurations/locations.ini`, one per line in the format:
 `<file_name>:/absolute/remote/path/<file_name>`

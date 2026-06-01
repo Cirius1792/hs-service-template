@@ -1,0 +1,8 @@
+[tool.cruft]
+skip = [
+  "docker-compose.yml",
+  "stack.env",
+  "configurations/locations.ini",
+  "configurations/data/**",
+  "swag/proxy-confs/**",
+]

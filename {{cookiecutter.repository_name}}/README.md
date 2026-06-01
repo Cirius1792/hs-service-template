@@ -37,23 +37,33 @@ saved variables and opens a pull request for review.
 - **Manual trigger:** available via `workflow_dispatch` in the Actions tab
 - **Authentication:** reuses the existing `GIT_TOKEN` secret
 
-### Skipping files from updates
+### Files intentionally skipped from template updates
 
-To prevent cruft from updating specific files, add them to the `skip` list in
-`.cruft.json`:
+Some generated files are customization points and are owned by this repository after creation. They are excluded
+from future `cruft update` runs by the `[tool.cruft]` policy in `pyproject.toml`.
 
-```json
-{
-  "skip": ["docker-compose.yml", "stack.env"]
-}
-```
+Skipped paths:
 
-Or via `pyproject.toml`:
+| Path | Why it is skipped |
+|------|-------------------|
+| `docker-compose.yml` | Service image, volumes, environment, labels, and networks often diverge from the template. |
+| `stack.env` | Runtime stack values are deployment-specific. |
+| `configurations/locations.ini` | Remote file destinations are environment-specific. |
+| `configurations/data/**` | Versioned service configuration payloads are downstream-owned. |
+| `swag/proxy-confs/**` | Proxy routing, headers, auth, and paths may need service-specific changes. |
 
-```toml
-[tool.cruft]
-skip = ["docker-compose.yml", "stack.env"]
-```
+`pyproject.toml` exists only to hold cruft configuration. It does not make this repository a Python package
+and does not define runtime dependencies.
+
+When the upstream template changes one of these skipped files, `cruft update` will not apply that change
+automatically. Manually compare the template version with this repository's customized version and port only the
+relevant lines, especially for deployment definitions and proxy configuration.
+
+Template-owned automation and documentation that are not listed here, such as workflows, scripts, and README
+updates, will continue to be updated by `cruft update`.
+
+Existing repositories that were created before this skip policy may also keep the same skip list directly in
+`.cruft.json` during migration. That duplication is safe; cruft combines both sources.
 
 ## Configuration deployment workflow
 The `deploy-configurations.yml` workflow uploads versioned configuration files stored in `configurations/data` to the remote host over SSH. Target paths are declared in `configurations/locations.ini`, one per line in the format:

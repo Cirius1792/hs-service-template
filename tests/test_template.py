@@ -5,7 +5,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from cookiecutter.main import cookiecutter  # type: ignore[import]
+from cookiecutter.main import cookiecutter  
 
 TEMPLATE_ROOT = Path(__file__).resolve().parents[1]
 

@@ -163,7 +163,7 @@ def test_readme_documents_cruft_skipped_customization_files(tmp_path: Path) -> N
     readme = (project / "README.md").read_text()
 
     assert "Files intentionally skipped from template updates" in readme
-    assert "pyproject.toml exists only to hold cruft configuration" in readme
+    assert "`pyproject.toml` exists only to hold cruft configuration" in readme
     assert "does not make this repository a Python package" in readme
     assert "Manually compare the template version" in readme
     assert "will continue to be updated by `cruft update`" in readme

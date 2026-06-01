@@ -1,3 +1,16 @@
 .venv/
 tests/__pycache__
 .worktrees/
+.zshrc
+.zprofile
+.claude
+.bash_profile
+.bashrc
+.env
+.gitconfig
+.gitmodules
+.idea
+.mcp.json
+.profile
+.ripgreprc
+.vscode

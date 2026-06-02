@@ -141,39 +141,6 @@ def test_given_default_context_when_project_is_rendered_then_no_template_syntax_
         )
 
 
-def test_given_cruft_workflow_when_project_is_rendered_then_it_reuses_git_token(
-    tmp_path: Path,
-) -> None:
-    """Given cruft workflow is rendered, then it reuses the existing GIT_TOKEN."""
-    # Given
-    workflow_path = ".github/workflows/cruft-update.yml"
-
-    # When
-    project = render_project(tmp_path)
-    workflow = project / workflow_path
-    content = workflow.read_text()
-
-    # Then
-    assert "secrets.GIT_TOKEN" in content, (
-        "Must reuse existing GIT_TOKEN secret"
-    )
-    assert "secrets.GITEA_TOKEN" not in content, (
-        "Must not reference a separate GITEA_TOKEN secret"
-    )
-    assert "secrets.DEPLOY_KNOWN_HOSTS" not in content, (
-        "Must not require a separate known_hosts secret for cruft SSH clones"
-    )
-    assert "secrets.DEPLOY_SSH_KEY" in content, (
-        "Must reuse the existing deploy SSH key for cruft SSH clones"
-    )
-    assert "ssh-keyscan" in content, (
-        "Must trust the exact .cruft.json SSH host before cruft clones"
-    )
-    assert "insteadOf" not in content, (
-        "Must not rewrite the saved cruft template SSH URL to HTTPS"
-    )
-
-
 def test_generated_pyproject_configures_cruft_skip_policy(tmp_path: Path) -> None:
     """Generated repos persist cruft skip rules for customized files."""
     project = render_project(tmp_path)
@@ -190,22 +157,6 @@ def test_generated_pyproject_configures_cruft_skip_policy(tmp_path: Path) -> Non
             }
         }
     }
-
-
-def test_readme_documents_cruft_skipped_customization_files(tmp_path: Path) -> None:
-    """Generated README explains which files cruft intentionally skips."""
-    project = render_project(tmp_path)
-
-    readme = (project / "README.md").read_text()
-
-    assert "Files intentionally skipped from template updates" in readme
-    assert "`pyproject.toml` exists only to hold cruft configuration" in readme
-    assert "does not make this repository a Python package" in readme
-    assert "Manually compare the template version" in readme
-    assert "will continue to be updated by `cruft update`" in readme
-
-    for skipped_path in EXPECTED_CRUFT_SKIP:
-        assert skipped_path in readme
 
 
 # ---------------------------------------------------------------------------

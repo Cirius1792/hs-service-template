@@ -1,4 +1,4 @@
-name: Cruft template update
+name: Repository template update with Cruft
 
 on:
   schedule:

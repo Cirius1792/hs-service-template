@@ -341,4 +341,4 @@ The CI pipeline will validate the Compose file, create/update the Portainer stac
 - **No secrets committed** — runtime variables live in `stack.env` (populated from CI secrets or a local `.env`).
 - **Template auto-updates via cruft** — generated repos stay in sync with template improvements through automated pull requests.
 
-With these conventions, rolling out a new homelab service is as simple as: generate the repo → configure the image → push to main. All supporting automation (validation, deployment, releases) is ready out of the box.
+With these conventions, rolling out a new service is as simple as: generate the repo → configure the image → push to main. All supporting automation (validation, deployment, releases) is ready out of the box.

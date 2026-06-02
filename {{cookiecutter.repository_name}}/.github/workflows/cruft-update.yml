@@ -113,7 +113,8 @@ jobs:
       - name: Create PR on Gitea
         if: steps.check.outputs.has_changes == 'true'
         env:
-          GITEA_TOKEN: {{ '${{ secrets.GITEA_TOKEN }}' }}
+          # GITEA_* is a reserved prefix; use PR_GITEA_TOKEN for a user PAT
+          PR_GITEA_TOKEN: {{ '${{ secrets.PR_GITEA_TOKEN }}' }}
         run: |
           set -e
           #
@@ -154,18 +155,43 @@ jobs:
           #
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
             "$PR_URL" \
-            -H "Authorization: token $GITEA_TOKEN" \
+            -H "Authorization: token $PR_GITEA_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD")
           #
           HTTP_STATUS=$(printf '%s\n' "$RESPONSE" | tail -n1)
           #
+          RESPONSE_BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
+          #
           case "$HTTP_STATUS" in
             201) echo "PR created successfully." ;;
             409) echo "PR already exists for branch cruft/update — skipping." ;;
+            403|404)
+              echo "::error::PR creation failed (HTTP $HTTP_STATUS)"
+              printf '%s\n' "$RESPONSE_BODY"
+              if printf '%s\n' "$RESPONSE_BODY" | grep -qF 'UnitTypeCode'; then
+                echo ""
+                echo "Diagnosis: The Gitea-actions built-in user cannot create pull requests."
+                echo "This is a known Gitea limitation (gitea#32302)."
+                echo ""
+                echo "Fix: Set the PR_GITEA_TOKEN secret to a user-level Personal Access Token:"
+                echo "  1. Go to ${API_URL%/*/*}/user/settings/applications"
+                echo "  2. Generate a token with 'write:repository' (or 'write:issue') scope"
+                echo "  3. Add it as secret PR_GITEA_TOKEN in this repo's Actions settings"
+                echo "     (GITEA_* names are reserved; PR_GITEA_TOKEN works around this)"
+                echo ""
+                echo "See: https://github.com/go-gitea/gitea/issues/32302"
+              elif printf '%s\n' "$RESPONSE_BODY" | grep -qF 'token is required'; then
+                echo ""
+                echo "Diagnosis: No valid PR_GITEA_TOKEN provided."
+                echo ""
+                echo "Fix: Add a user-level PAT as secret PR_GITEA_TOKEN in repository Actions settings."
+              fi
+              exit 1
+              ;;
             *)
               echo "Unexpected HTTP status: $HTTP_STATUS"
-              printf '%s\n' "$RESPONSE" | sed '$d'
+              printf '%s\n' "$RESPONSE_BODY"
               exit 1
               ;;
           esac

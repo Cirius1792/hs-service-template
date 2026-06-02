@@ -35,7 +35,8 @@ saved variables and opens a pull request for review on the current Gitea instanc
 
 - **Schedule:** every Monday at 3am UTC
 - **Manual trigger:** available via `workflow_dispatch` in the Actions tab
-- **Authentication:** reuses the existing `DEPLOY_SSH_KEY` secret to clone SSH templates, trusts the `.cruft.json` host with `ssh-keyscan` when needed, and uses `GITEA_TOKEN` to open the pull request.
+- **Authentication:** reuses the existing `DEPLOY_SSH_KEY` secret to clone SSH templates, trusts the `.cruft.json` host with `ssh-keyscan` when needed, and uses `PR_GITEA_TOKEN` to open the pull request.
+- **Why `PR_GITEA_TOKEN` instead of `GITEA_TOKEN`:** Gitea reserves the `GITEA_*` prefix for secrets (the built-in `GITEA_TOKEN` is injected automatically). Use a user-level Personal Access Token named `PR_GITEA_TOKEN` to work around this restriction.
 - **Commit identity:** automated commits use `cruft-bot@<gitea-host>`, derived from `gitea.server_url`. Edit the `git config user.email` line in `.github/workflows/cruft-update.yml` if you prefer a different committer address.
 
 ### Files intentionally skipped from template updates

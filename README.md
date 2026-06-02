@@ -264,7 +264,7 @@ Required secret for pull request creation:
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `GITEA_TOKEN` | secret | Gitea token with permissions to create pull requests |
+| `PR_GITEA_TOKEN` | secret | User-level Gitea PAT with `write:repository` scope for creating pull requests. The `GITEA_*` prefix is reserved, so this secret uses `PR_` instead. |
 
 #### Files excluded from cruft updates
 

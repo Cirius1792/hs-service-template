@@ -117,6 +117,16 @@ jobs:
         run: |
           set -e
           #
+          REPO_FULL="{{ '${{ gitea.repository }}' }}"
+          REPO_OWNER="{{ '${{ gitea.repository_owner }}' }}"
+          REPO_NAME="${REPO_FULL#${REPO_OWNER}/}"
+          if [ -z "$REPO_NAME" ] || [ "$REPO_NAME" = "$REPO_FULL" ]; then
+            REPO_NAME="$REPO_FULL"
+          fi
+          API_URL="{{ '${{ gitea.api_url }}' }}"
+          PR_URL="${API_URL}/repos/${REPO_OWNER}/${REPO_NAME}/pulls"
+          echo "→ Creating PR at $PR_URL"
+          #
           TEMPLATE_URL=$(python3 <<'PY'
           import json
           from pathlib import Path
@@ -143,7 +153,7 @@ jobs:
           )
           #
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
-            "{{ '${{ gitea.api_url }}' }}/repos/{{ '${{ gitea.repository }}' }}/pulls" \
+            "$PR_URL" \
             -H "Authorization: token $GITEA_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD")

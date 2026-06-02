@@ -125,7 +125,9 @@ def test_given_default_context_when_project_is_rendered_then_cruft_workflow_uses
     workflow = (project / ".github/workflows/cruft-update.yml").read_text()
     readme = (project / "README.md").read_text()
 
-    assert "${{ gitea.api_url }}/repos/${{ gitea.repository }}/pulls" in workflow
+    assert "REPO_OWNER=\"${{ gitea.repository_owner }}\"" in workflow
+    assert 'PR_URL="${API_URL}/repos/${REPO_OWNER}/${REPO_NAME}/pulls"' in workflow
+    assert "echo \"→ Creating PR at $PR_URL\"" in workflow
     assert "GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}" in workflow
     assert "GITEA_TOKEN: ${{ secrets.GIT_TOKEN }}" not in workflow
     assert "GITEA_SERVER_URL: ${{ gitea.server_url }}" in workflow

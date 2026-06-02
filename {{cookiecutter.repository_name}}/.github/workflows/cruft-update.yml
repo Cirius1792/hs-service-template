@@ -27,40 +27,40 @@ jobs:
         run: |
           set -e
           mkdir -p ~/.ssh
-
+          #
           CRUFT_SSH_INFO=$(python3 <<'PY'
           import json
           import sys
           from pathlib import Path
           from urllib.parse import urlparse
-
+          #
           cruft_file = Path(".cruft.json")
           if not cruft_file.exists():
               sys.exit("Missing .cruft.json; this workflow must run in a cruft-generated repository.")
-
+          #
           template = json.loads(cruft_file.read_text()).get("template", "")
           parsed = urlparse(template)
-
+          #
           if parsed.scheme != "ssh":
               print("")
               raise SystemExit
-
+          #
           if not parsed.hostname:
               sys.exit(f"Could not parse SSH template URL from .cruft.json: {template}")
-
+          #
           print(parsed.hostname, parsed.port or 22)
           PY
           )
-
+          #
           if [ -n "$CRUFT_SSH_INFO" ]; then
             set -- $CRUFT_SSH_INFO
             CRUFT_SSH_HOST="$1"
             CRUFT_SSH_PORT="$2"
             ssh-keyscan -H -p "$CRUFT_SSH_PORT" "$CRUFT_SSH_HOST" > ~/.ssh/known_hosts
           fi
-
+          #
           chmod 600 ~/.ssh/known_hosts
-
+          #
       - name: Start ssh-agent
         uses: webfactory/ssh-agent@v0.10.0
         with:
@@ -75,7 +75,7 @@ jobs:
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
-
+          #
       - name: Apply template updates
         if: steps.check.outputs.has_changes == 'true'
         run: |
@@ -83,21 +83,21 @@ jobs:
           git config user.name "cruft-bot"
           git config user.email "cruft-bot@cltec.dev"
           cruft update --skip-apply-ask --refresh-private-variables
-
+          #
       - name: Push update branch
         if: steps.check.outputs.has_changes == 'true'
         run: |
           set -e
           git checkout -b cruft/update
           git push origin cruft/update --force
-
+          #
       - name: Create PR on Gitea
         if: steps.check.outputs.has_changes == 'true'
         env:
           GITEA_TOKEN: {{ '${{ secrets.GIT_TOKEN }}' }}
         run: |
           set -e
-
+          #
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
             "https://gitea.cltec.dev/api/v1/repos/{{ '${{ gitea.repository }}' }}/pulls" \
             -H "Authorization: token $GITEA_TOKEN" \
@@ -111,9 +111,9 @@ jobs:
           }
           BODY
           )")
-
+          #
           HTTP_STATUS=$(printf '%s\n' "$RESPONSE" | tail -n1)
-
+          #
           case "$HTTP_STATUS" in
             201) echo "PR created successfully." ;;
             409) echo "PR already exists for branch cruft/update — skipping." ;;

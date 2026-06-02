@@ -9,7 +9,7 @@ This repository is a [Cookiecutter](https://github.com/cookiecutter/cookiecutter
 
 The generated project contains everything needed to go from Git push to running container — including validation, deployment, and documentation.
 
-> **Note:** This template assumes an existing homelab infrastructure with Docker Compose, an external reverse proxy (SWAG/nginx), and Portainer. It does not set up SWAG itself — it deploys *config files* to those services remotely via SSH.
+> **Note:** This template assumes an existing infrastructure with Docker Compose, an external reverse proxy (SWAG/nginx), and Portainer. It does not set up SWAG itself — it deploys *config files* to those services remotely via SSH.
 
 ---
 

@@ -25,6 +25,7 @@ jobs:
         run: pip install cruft
 
       - name: Trust cruft template host
+        id: template_source
         run: |
           set -e
           mkdir -p ~/.ssh
@@ -54,15 +55,18 @@ jobs:
           )
           #
           if [ -n "$CRUFT_SSH_INFO" ]; then
+            echo "requires_ssh=true" >> "$GITHUB_OUTPUT"
             set -- $CRUFT_SSH_INFO
             CRUFT_SSH_HOST="$1"
             CRUFT_SSH_PORT="$2"
             ssh-keyscan -H -p "$CRUFT_SSH_PORT" "$CRUFT_SSH_HOST" > ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+          else
+            echo "requires_ssh=false" >> "$GITHUB_OUTPUT"
           fi
           #
-          chmod 600 ~/.ssh/known_hosts
-          #
       - name: Start ssh-agent
+        if: steps.template_source.outputs.requires_ssh == 'true'
         uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: {{ '${{ secrets.DEPLOY_SSH_KEY }}' }}
@@ -79,10 +83,24 @@ jobs:
           #
       - name: Apply template updates
         if: steps.check.outputs.has_changes == 'true'
+        env:
+          GITEA_SERVER_URL: {{ '${{ gitea.server_url }}' }}
         run: |
           set -e
+          GITEA_HOST=$(python3 <<'PY'
+          import os
+          from urllib.parse import urlparse
+          #
+          server_url = os.environ["GITEA_SERVER_URL"]
+          parsed = urlparse(server_url)
+          if not parsed.hostname:
+              raise SystemExit(f"Could not parse Gitea host from GITEA_SERVER_URL: {server_url}")
+          print(parsed.hostname)
+          PY
+          )
+          #
           git config user.name "cruft-bot"
-          git config user.email "cruft-bot@cltec.dev"
+          git config user.email "cruft-bot@$GITEA_HOST"
           cruft update --skip-apply-ask --refresh-private-variables
           #
       - name: Push update branch
@@ -99,19 +117,36 @@ jobs:
         run: |
           set -e
           #
+          TEMPLATE_URL=$(python3 <<'PY'
+          import json
+          from pathlib import Path
+          #
+          cruft_file = Path(".cruft.json")
+          template = json.loads(cruft_file.read_text()).get("template", "")
+          print(template or "the upstream template")
+          PY
+          )
+          #
+          export TEMPLATE_URL
+          PAYLOAD=$(python3 <<'PY'
+          import json
+          import os
+          #
+          template_url = os.environ.get("TEMPLATE_URL", "the upstream template")
+          print(json.dumps({
+              "title": "chore: template update via cruft",
+              "head": "cruft/update",
+              "base": "main",
+              "body": f"Automated update from {template_url}.\n\nReview the changes and merge to accept, or close to reject.",
+          }))
+          PY
+          )
+          #
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
-            "https://gitea.cltec.dev/api/v1/repos/{{ '${{ gitea.repository }}' }}/pulls" \
+            "{{ '${{ gitea.api_url }}' }}/repos/{{ '${{ gitea.repository }}' }}/pulls" \
             -H "Authorization: token $GITEA_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "$(cat <<'BODY'
-          {
-            "title": "chore: template update via cruft",
-            "head": "cruft/update",
-            "base": "main",
-            "body": "Automated update from the [hs-service-template](https://gitea.cltec.dev/clt/hs-service-template).\n\nReview the changes and merge to accept, or close to reject."
-          }
-          BODY
-          )")
+            -d "$PAYLOAD")
           #
           HTTP_STATUS=$(printf '%s\n' "$RESPONSE" | tail -n1)
           #

@@ -5,5 +5,14 @@
   "service_icon": "app",
   "base_domain": "example.com",
   "default_port": "8080",
-  "include_proxy_config": "y"
+  "include_proxy_config": "y",
+  "__prompts__": {
+    "service_name": "Service name",
+    "repository_name": "Repository name",
+    "service_group": "Homepage group",
+    "service_icon": "Homepage icon",
+    "base_domain": "Base domain",
+    "default_port": "Default internal port",
+    "include_proxy_config": "Include SWAG proxy config"
+  }
 }

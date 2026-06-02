@@ -114,6 +114,30 @@ def test_given_default_context_when_project_is_rendered_then_cruft_workflow_exis
     assert workflow.is_file(), "cruft-update.yml should be rendered"
 
 
+def test_given_default_context_when_project_is_rendered_then_cruft_workflow_uses_gitea_contexts(
+    tmp_path: Path,
+) -> None:
+    """Generated cruft updates should target the current Gitea instance."""
+    # When
+    project = render_project(tmp_path)
+
+    # Then
+    workflow = (project / ".github/workflows/cruft-update.yml").read_text()
+    readme = (project / "README.md").read_text()
+
+    assert "${{ gitea.api_url }}/repos/${{ gitea.repository }}/pulls" in workflow
+    assert "GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}" in workflow
+    assert "GITEA_TOKEN: ${{ secrets.GIT_TOKEN }}" not in workflow
+    assert "GITEA_SERVER_URL: ${{ gitea.server_url }}" in workflow
+    assert "git config user.email \"cruft-bot@$GITEA_HOST\"" in workflow
+    assert "cruft-bot@example.com" not in workflow
+    assert "template = json.loads(cruft_file.read_text()).get(\"template\", \"\")" in workflow
+    assert "echo \"requires_ssh=false\" >> \"$GITHUB_OUTPUT\"" in workflow
+    assert "if: steps.template_source.outputs.requires_ssh == 'true'" in workflow
+    assert "gitea.cltec.dev" not in workflow
+    assert "gitea.cltec.dev" not in readme
+
+
 def test_given_default_context_when_project_is_rendered_then_no_template_syntax_remains(
     tmp_path: Path,
 ) -> None:

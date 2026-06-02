@@ -29,13 +29,14 @@ The service can be monitored from Uptime Kuma using the public URL shown above.
 ## Template auto-updates
 
 This repository includes a weekly workflow (`.github/workflows/cruft-update.yml`) that checks
-for updates to the upstream [hs-service-template](https://gitea.cltec.dev/clt/hs-service-template).
+for updates to the upstream template recorded in `.cruft.json`.
 When new template changes are detected, `cruft` re-renders the template with this project's
-saved variables and opens a pull request for review.
+saved variables and opens a pull request for review on the current Gitea instance.
 
 - **Schedule:** every Monday at 3am UTC
 - **Manual trigger:** available via `workflow_dispatch` in the Actions tab
-- **Authentication:** reuses the existing `DEPLOY_SSH_KEY` secret to clone the template over SSH, trusts the `.cruft.json` host with `ssh-keyscan`, and uses `GIT_TOKEN` to open the pull request.
+- **Authentication:** reuses the existing `DEPLOY_SSH_KEY` secret to clone SSH templates, trusts the `.cruft.json` host with `ssh-keyscan` when needed, and uses `GITEA_TOKEN` to open the pull request.
+- **Commit identity:** automated commits use `cruft-bot@<gitea-host>`, derived from `gitea.server_url`. Edit the `git config user.email` line in `.github/workflows/cruft-update.yml` if you prefer a different committer address.
 
 ### Files intentionally skipped from template updates
 

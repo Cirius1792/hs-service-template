@@ -37,7 +37,6 @@
 29. If gitleaks missing, script fails with message; install before rerun.
 30. Release automation: `cd {{cookiecutter.repository_name}} && ./ci/release.sh` (semantic-release).
 31. Semantic-release config uses branch `main` and plugins commit-analyzer, release-notes-generator, changelog, git.
-32. Generate service repo from template: `cookiecutter https://github.com/<org>/clt-hs-compose-template.git` (replace org appropriately).
 33. Bring up service locally after configuring `.env`: `cd {{cookiecutter.repository_name}} && docker compose up -d`.
 34. Tear down local service: `docker compose down` from same directory.
 35. Inspect service logs: `docker compose logs -f {{cookiecutter.service_name}}`.

@@ -23,6 +23,21 @@ jobs:
       - name: Install cruft
         run: pip install cruft
 
+      - name: Configure known_hosts
+        env:
+          DEPLOY_KNOWN_HOSTS: {{ '${{ secrets.DEPLOY_KNOWN_HOSTS }}' }}
+        run: |
+          set -e
+          : "${DEPLOY_KNOWN_HOSTS:?Set DEPLOY_KNOWN_HOSTS with the Gitea SSH host key}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Start ssh-agent
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: {{ '${{ secrets.DEPLOY_SSH_KEY }}' }}
+
       - name: Check for template updates
         id: check
         run: |

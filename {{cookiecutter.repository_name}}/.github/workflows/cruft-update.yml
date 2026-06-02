@@ -83,6 +83,7 @@ jobs:
           #
       - name: Apply template updates
         if: steps.check.outputs.has_changes == 'true'
+        id: update
         env:
           GITEA_SERVER_URL: {{ '${{ gitea.server_url }}' }}
         run: |
@@ -103,15 +104,24 @@ jobs:
           git config user.email "cruft-bot@$GITEA_HOST"
           cruft update --skip-apply-ask --refresh-private-variables
           #
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+            echo "No file changes after cruft update — skipping PR."
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+            git add -A
+            git commit -m "chore: template update via cruft"
+          fi
+          #
       - name: Push update branch
-        if: steps.check.outputs.has_changes == 'true'
+        if: steps.update.outputs.has_diff == 'true'
         run: |
           set -e
           git checkout -b cruft/update
           git push origin cruft/update --force
           #
       - name: Create PR on Gitea
-        if: steps.check.outputs.has_changes == 'true'
+        if: steps.update.outputs.has_diff == 'true'
         env:
           # GITEA_* is a reserved prefix; use PR_GITEA_TOKEN for a user PAT
           PR_GITEA_TOKEN: {{ '${{ secrets.PR_GITEA_TOKEN }}' }}

@@ -104,11 +104,12 @@ jobs:
           git config user.email "cruft-bot@$GITEA_HOST"
           cruft update --skip-apply-ask --refresh-private-variables
           #
-          if git diff --cached --quiet; then
+          if git diff --cached --quiet && git diff --quiet; then
             echo "has_diff=false" >> "$GITHUB_OUTPUT"
             echo "No file changes after cruft update — skipping PR."
           else
             echo "has_diff=true" >> "$GITHUB_OUTPUT"
+            git add -A
             git commit -m "chore: template update via cruft"
           fi
           #

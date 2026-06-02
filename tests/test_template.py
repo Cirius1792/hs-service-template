@@ -138,7 +138,8 @@ def test_given_default_context_when_project_is_rendered_then_cruft_workflow_uses
     assert "template = json.loads(cruft_file.read_text()).get(\"template\", \"\")" in workflow
     assert "echo \"requires_ssh=false\" >> \"$GITHUB_OUTPUT\"" in workflow
     assert "if: steps.template_source.outputs.requires_ssh == 'true'" in workflow
-    assert "git diff --cached --quiet" in workflow
+    assert "git diff --cached --quiet && git diff --quiet" in workflow
+    assert "git add -A" in workflow
     assert "git commit -m \"chore: template update via cruft\"" in workflow
     assert "has_diff=false" in workflow
     assert "No file changes after cruft update" in workflow

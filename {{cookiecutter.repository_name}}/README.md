@@ -35,8 +35,7 @@ saved variables and opens a pull request for review.
 
 - **Schedule:** every Monday at 3am UTC
 - **Manual trigger:** available via `workflow_dispatch` in the Actions tab
-- **Authentication:** reuses the existing `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` secrets to clone the template over SSH, and `GIT_TOKEN` to open the pull request.
-  `DEPLOY_KNOWN_HOSTS` must include the Gitea SSH host used by `.cruft.json`.
+- **Authentication:** reuses the existing `DEPLOY_SSH_KEY` secret to clone the template over SSH, trusts the `.cruft.json` host with `ssh-keyscan`, and uses `GIT_TOKEN` to open the pull request.
 
 ### Files intentionally skipped from template updates
 

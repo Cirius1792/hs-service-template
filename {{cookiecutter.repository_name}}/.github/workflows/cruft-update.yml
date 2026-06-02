@@ -23,14 +23,42 @@ jobs:
       - name: Install cruft
         run: pip install cruft
 
-      - name: Configure known_hosts
-        env:
-          DEPLOY_KNOWN_HOSTS: {{ '${{ secrets.DEPLOY_KNOWN_HOSTS }}' }}
+      - name: Trust cruft template host
         run: |
           set -e
-          : "${DEPLOY_KNOWN_HOSTS:?Set DEPLOY_KNOWN_HOSTS with the Gitea SSH host key}"
           mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+          CRUFT_SSH_INFO=$(python3 <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          cruft_file = Path(".cruft.json")
+          if not cruft_file.exists():
+              sys.exit("Missing .cruft.json; this workflow must run in a cruft-generated repository.")
+
+          template = json.loads(cruft_file.read_text()).get("template", "")
+          parsed = urlparse(template)
+
+          if parsed.scheme != "ssh":
+              print("")
+              raise SystemExit
+
+          if not parsed.hostname:
+              sys.exit(f"Could not parse SSH template URL from .cruft.json: {template}")
+
+          print(parsed.hostname, parsed.port or 22)
+          PY
+          )
+
+          if [ -n "$CRUFT_SSH_INFO" ]; then
+            set -- $CRUFT_SSH_INFO
+            CRUFT_SSH_HOST="$1"
+            CRUFT_SSH_PORT="$2"
+            ssh-keyscan -H -p "$CRUFT_SSH_PORT" "$CRUFT_SSH_HOST" > ~/.ssh/known_hosts
+          fi
+
           chmod 600 ~/.ssh/known_hosts
 
       - name: Start ssh-agent

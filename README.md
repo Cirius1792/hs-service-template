@@ -251,8 +251,7 @@ This repository (the template itself) includes a weekly workflow in each generat
 
 The workflow in generated repos:
 - Runs every Monday at 3:00 UTC (and on `workflow_dispatch`)
-- Reuses `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` to clone the template over SSH
-  (`DEPLOY_KNOWN_HOSTS` must include the Gitea SSH host used by `.cruft.json`)
+- Reuses `DEPLOY_SSH_KEY` to clone the template over SSH and trusts the `.cruft.json` host with `ssh-keyscan`
 - Uses `cruft check` to detect changes
 - On new template changes, re-renders with the project's saved variables
 - Pushes a branch (`cruft/update`) and opens a pull request

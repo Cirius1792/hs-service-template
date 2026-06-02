@@ -158,11 +158,14 @@ def test_given_cruft_workflow_when_project_is_rendered_then_it_reuses_git_token(
     assert "secrets.GITEA_TOKEN" not in content, (
         "Must not reference a separate GITEA_TOKEN secret"
     )
-    assert "secrets.DEPLOY_KNOWN_HOSTS" in content, (
-        "Must reuse the existing deploy known_hosts secret for cruft SSH clones"
+    assert "secrets.DEPLOY_KNOWN_HOSTS" not in content, (
+        "Must not require a separate known_hosts secret for cruft SSH clones"
     )
     assert "secrets.DEPLOY_SSH_KEY" in content, (
         "Must reuse the existing deploy SSH key for cruft SSH clones"
+    )
+    assert "ssh-keyscan" in content, (
+        "Must trust the exact .cruft.json SSH host before cruft clones"
     )
     assert "insteadOf" not in content, (
         "Must not rewrite the saved cruft template SSH URL to HTTPS"

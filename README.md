@@ -271,6 +271,40 @@ These files are customization points and are skipped during `cruft update` (conf
 
 `pyproject.toml` exists **only** to hold cruft configuration — it does not make the repository a Python package.
 
+#### Upgrading a repo generated with an older template version
+
+Repos created before this skip policy was introduced lack `pyproject.toml` and therefore have **no skip rules**. Running `cruft update` from such an older baseline will overwrite the customized files listed above — including `docker-compose.yml` and `stack.env` — with template defaults.
+
+To protect an older repo **before the first update** against the new template:
+
+1. Open the repo's `.cruft.json` and add a top-level `"skip"` key while preserving all existing keys:
+
+```json
+{
+  "template": "...",
+  "commit": "...",
+  "context": { "cookiecutter": { "...": "..." } },
+  "directory": null,
+  "skip": [
+    "docker-compose.yml",
+    "stack.env",
+    "configurations/locations.ini",
+    "configurations/data/**",
+    "swag/proxy-confs/**"
+  ]
+}
+```
+
+2. Run the update:
+
+```bash
+cruft update --skip-apply-ask --refresh-private-variables
+```
+
+After this run, the generated `pyproject.toml` appears in the repo and future updates are protected automatically. Leaving the manually added skip list in `.cruft.json` is safe — cruft merges both sources.
+
+> **Sanity check:** After the update completes, verify that `docker-compose.yml`, `stack.env`, `configurations/locations.ini`, `configurations/data/*`, and `swag/proxy-confs/*` still contain your customization and were not replaced by the template.
+
 ---
 
 ## Local development workflow

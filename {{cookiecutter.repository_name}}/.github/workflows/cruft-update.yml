@@ -53,11 +53,10 @@ jobs:
         env:
           GITEA_TOKEN: {{ '${{ secrets.GIT_TOKEN }}' }}
         run: |
-          {% raw %}
           set -e
 
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
-            "https://gitea.cltec.dev/api/v1/repos/${{ gitea.repository }}/pulls" \
+            "https://gitea.cltec.dev/api/v1/repos/{{ '${{ gitea.repository }}' }}/pulls" \
             -H "Authorization: token $GITEA_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(cat <<'BODY'
@@ -81,4 +80,3 @@ jobs:
               exit 1
               ;;
           esac
-          {% endraw %}

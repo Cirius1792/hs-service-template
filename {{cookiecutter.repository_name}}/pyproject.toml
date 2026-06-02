@@ -1,5 +1,6 @@
 [tool.cruft]
 skip = [
+  "README.md",
   "docker-compose.yml",
   "stack.env",
   "configurations/locations.ini",

@@ -94,7 +94,7 @@ jobs:
               jq -R -s -c '
                 split("\n") |
                 map(select(length > 0)) |
-                map(split("=") | {name: .[0], value: .[1]})
+                map(split("=") | {name: .[0], value: (.[1:] | join("="))})
               ')
           else
             ENV_JSON='[]'
@@ -128,10 +128,13 @@ jobs:
             exit 1
           fi
           #
+          STACK_EXISTED=true
+          #
           STACK_ID=$(printf '%s\n' "$STACKS_BODY" | \
             jq -r ".[] | select(.Name == \"$STACK_NAME\") | .Id")
           #
           if [ -z "$STACK_ID" ] || [ "$STACK_ID" = "null" ]; then
+            STACK_EXISTED=false
             UUID=$(uuidgen)
             echo "Stack not found. Creating with Webhook $UUID..."
             PAYLOAD=$(jq -n \
@@ -194,6 +197,7 @@ jobs:
           fi
           #
           echo "stack_id=$STACK_ID" >> "$GITHUB_OUTPUT"
+          echo "stack_existed=$STACK_EXISTED" >> "$GITHUB_OUTPUT"
           #
       - name: Retrieve webhook ID (create if missing)
         id: webhook
@@ -292,6 +296,89 @@ jobs:
           fi
           #
           echo "webhook_id=$WEBHOOK_ID" >> $GITHUB_OUTPUT
+          #
+      - name: Sync stack environment variables
+        if: steps.stack.outputs.stack_existed == 'true'
+        env:
+          PORTAINER_URL: {{ '${{ inputs.portainer_url }}' }}
+          PORTAINER_API_KEY: {{ '${{ secrets.portainer_access_token }}' }}
+          PORTAINER_ENDPOINT_ID: {{ '${{ inputs.portainer_endpoint_id }}' }}
+          ENV_FILE: {{ '${{ inputs.env_file }}' }}
+          GIT_USERNAME: {{ '${{ secrets.git_username }}' }}
+          GIT_TOKEN: {{ '${{ secrets.git_token }}' }}
+          REPO_REF: {{ '${{ inputs.repo_ref }}' }}
+        run: |
+          set -eo pipefail
+          #
+          STACK_ID={{ '"${{ steps.stack.outputs.stack_id }}"' }}
+          #
+          if [ -z "$STACK_ID" ]; then
+            echo "ERROR: Stack ID output is empty"
+            exit 2
+          fi
+          #
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "No env file at $ENV_FILE; skipping env sync."
+            exit 0
+          fi
+          #
+          # Parse env file into Portainer's JSON format.
+          # Values may contain '=' (e.g. BASE_URL=https://...).
+          # Use join("=") on [1:] to preserve them.
+          ENV_JSON=$(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | \
+            jq -R -s -c '
+              split("\n") |
+              map(select(length > 0)) |
+              map(split("=") | {name: .[0], value: (.[1:] | join("="))})
+            ')
+          #
+          WEBHOOK_ID={{ '"${{ steps.webhook.outputs.webhook_id }}"' }}
+          #
+          echo "Syncing env vars for stack $STACK_ID (webhook $WEBHOOK_ID):"
+          printf '%s\n' "$ENV_JSON" | jq -r '.[] | "  \(.name)=\(.value)"'
+          #
+          # git-based stacks use POST /api/stacks/{id}/git (not PUT /api/stacks/{id},
+          # which is Swarm file-based only). The payload includes git configs, env vars
+          # and existing autoUpdate settings to avoid resetting the webhook.
+          UPDATE_PAYLOAD=$(jq -n \
+            --arg ref "$REPO_REF" \
+            --arg user "$GIT_USERNAME" \
+            --arg pass "$GIT_TOKEN" \
+            --arg uuid "$WEBHOOK_ID" \
+            --argjson env "$ENV_JSON" \
+            '{
+              env: $env,
+              prune: false,
+              repositoryAuthentication: true,
+              repositoryUsername: $user,
+              repositoryPassword: $pass,
+              repositoryReferenceName: $ref,
+              autoUpdate: {
+                forcePullImage: false,
+                forceUpdate: false,
+                interval: "5m",
+                webhook: $uuid
+              }
+            }')
+          #
+          UPDATE_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            -H "Content-Type: application/json" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID/git?endpointId=$PORTAINER_ENDPOINT_ID" \
+            -d "$UPDATE_PAYLOAD")
+          #
+          UPDATE_HTTP_STATUS=$(printf '%s\n' "$UPDATE_RESPONSE" | tail -n1)
+          UPDATE_BODY=$(printf '%s\n' "$UPDATE_RESPONSE" | sed '$d')
+          #
+          echo "POST /api/stacks/$STACK_ID/git status: $UPDATE_HTTP_STATUS"
+          #
+          if [ "${UPDATE_HTTP_STATUS:-0}" -ge 400 ]; then
+            echo "Failed to update stack env vars:"
+            printf '%s\n' "$UPDATE_BODY"
+            exit 1
+          fi
+          #
+          echo "Stack environment variables synced."
           #
       - name: Trigger stack redeploy via webhook
         env:

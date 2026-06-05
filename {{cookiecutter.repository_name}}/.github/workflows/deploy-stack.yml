@@ -9,6 +9,7 @@ on:
       - 'stack.env'
       - '.github/workflows/deploy-stack.yml'
       - '.github/workflows/reusable-portainer-redeploy.yml'
+  workflow_dispatch:
 
 env:
   COMPOSE_FILE_PATH: docker-compose.yml
